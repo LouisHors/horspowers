@@ -1,0 +1,41 @@
+{
+  "name": "superpowers-mcp",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Superpowers skills library as MCP server for Cursor and other AI coding tools",
+  "main": "index.js",
+  "bin": {
+    "superpowers-mcp": "./index.js"
+  },
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js",
+    "test": "node --test"
+  },
+  "keywords": [
+    "mcp",
+    "model-context-protocol",
+    "superpowers",
+    "skills",
+    "tdd",
+    "debugging",
+    "cursor",
+    "ai-coding"
+  ],
+  "author": {
+    "name": "Jesse Vincent",
+    "email": "jesse@fsck.com"
+  },
+  "homepage": "https://github.com/obra/superpowers",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/obra/superpowers.git"
+  },
+  "license": "MIT",
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^0.5.0"
+  },
+  "engines": {
+    "node": ">=18.0.0"
+  }
+}

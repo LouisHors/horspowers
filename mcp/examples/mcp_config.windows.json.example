@@ -1,0 +1,13 @@
+{
+  "mcpServers": {
+    "superpowers": {
+      "command": "node",
+      "args": ["C:\\Users\\YOUR_USERNAME\\.superpowers\\mcp\\index.js"],
+      "env": {
+        "SUPERPOWERS_SKILLS_DIR": "C:\\Users\\YOUR_USERNAME\\.superpowers\\skills",
+        "SUPERPOWERS_PERSONAL_SKILLS": "C:\\Users\\YOUR_USERNAME\\.cursor\\skills",
+        "SUPERPOWERS_PROJECT_SKILLS": "${workspaceFolder}\\.skills"
+      }
+    }
+  }
+}
