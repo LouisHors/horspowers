@@ -4,6 +4,35 @@ Just kidding :p
 
 A custom version based on Superpowers, just a rookie stand on the shoulders of giants.
 
+## 🚀 Now Available for Cursor!
+
+**NEW**: Superpowers now supports Cursor and other MCP-compatible tools via Model Context Protocol (MCP)!
+
+👉 **[Quick Start Guide for Cursor](mcp/QUICK_START.md)** - Get started in 5 minutes  
+👉 **[Complete MCP Documentation](mcp/README.md)** - All features and setup  
+👉 **[Live Demos](mcp/DEMO.md)** - See it in action
+
+### Quick Install for Cursor
+
+```bash
+# Clone and checkout MCP branch
+git clone https://github.com/obra/superpowers.git ~/.superpowers
+cd ~/.superpowers
+git checkout lh-feature-mcp
+
+# Install dependencies
+cd mcp
+npm install
+
+# Configure Cursor (see mcp/QUICK_START.md for details)
+# Then restart Cursor and enjoy!
+```
+
+**All 15 skills available via:**
+- 🛠️ Tools: `list_skills`, `get_skill`, `search_skills`
+- 🎯 Prompts: `brainstorm`, `debug`, `tdd`, and more
+- 📚 Resources: Browse skills in Cursor's resource panel
+
 ## What's different
 
 I'm a single developer, sometimes, off the work, e.g.
