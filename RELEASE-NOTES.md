@@ -1,5 +1,16 @@
 # Horspowers Release Notes
 
+## v4.3.3 (2026-01-27)
+
+### Improvements
+
+**增强文档系统与工作流的集成**
+- 优化 brainstorming 技能中的文档创建流程
+- 更新 writing-plans 技能的计划文档模板
+- 改进 subagent-driven-development 的文档追踪逻辑
+
+---
+
 ## v4.3.2 (2026-01-27)
 
 ### Documentation
