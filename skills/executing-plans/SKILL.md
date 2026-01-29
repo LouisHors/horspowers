@@ -21,62 +21,130 @@ Load plan, review critically, execute tasks in batches, report for review betwee
 
 IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
 
-1. **Read task document path** (from writing-plans):
+1. **Check and create task document if needed**:
    ```bash
    # 检查任务文档是否存在
    if [ -n "$TASK_DOC" ] && [ -f "$TASK_DOC" ]; then
      echo "✅ 任务文档: $TASK_DOC"
      # 读取任务文档获取上下文和检查点信息
      cat "$TASK_DOC"
-   elif [ -n "$TASK_DOC" ]; then
-     # 文档路径设置但文件不存在 - 增强处理
-     echo "⚠️  警告: TASK_DOC 已设置但文件不存在: $TASK_DOC"
+   else
+     # 任务文档不存在 - 提供创建选项
+     echo "⚠️  任务文档不存在"
      echo ""
 
-     # 尝试搜索相关文档
-     echo "🔍 搜索相关文档..."
-     RECENT_TASKS=$(find docs/active -name "task*.md" -mtime -7 2>/dev/null | head -3)
-     if [ -n "$RECENT_TASKS" ]; then
-       echo "最近的任务文档:"
-       echo "$RECENT_TASKS"
+     # 检查是否有 plan 文档
+     PLAN_DOCS=$(find docs/plans -name "*.md" -type f 2>/dev/null | grep -v "design-" | sort -r | head -3)
+
+     if [ -n "$PLAN_DOCS" ]; then
+       echo "📋 发现以下计划文档:"
+       echo "$PLAN_DOCS" | nl -w2 -s'. '
+       echo ""
+
+       # 使用 AskUserQuestion 询问用户
+       # (AI 会自动处理，这里列出选项供参考)
+       echo "请选择:"
+       echo "1. 从现有 plan 创建 task 文档（推荐）"
+       echo "2. 运行完整的 writing-plans 流程"
+       echo "3. 跳过文档系统，直接执行计划"
+       echo ""
+
+       # 选项 1: 从 plan 创建 task
+       if [ "$USER_CHOICE" = "1" ]; then
+         # 获取最新的 plan 文档
+         LATEST_PLAN=$(echo "$PLAN_DOCS" | head -1)
+         PLAN_NAME=$(basename "$LATEST_PLAN" .md)
+
+         echo "正在从 $LATEST_PLAN 创建 task 文档..."
+
+         TASK_DOC=$(node -e "
+           const { UnifiedDocsManager } = require('\${CLAUDE_PLUGIN_ROOT}/lib/docs-core.js');
+           const manager = new UnifiedDocsManager(process.cwd());
+
+           // 从 plan 文件名提取标题
+           const planName = '${PLAN_NAME}';
+           const title = 'Implement: ' + planName.replace(/^\\d{4}-\\d{2}-\\d{2}-/, '');
+
+           const result = manager.createActiveDocument('task', title, null, {
+             plan: planName + '.md'
+           });
+
+           if (result.success) {
+             console.log(result.path);
+           } else {
+             console.error('Error:', result.error);
+             process.exit(1);
+           }
+         ")
+
+         if [ $? -eq 0 ] && [ -f "$TASK_DOC" ]; then
+           export TASK_DOC
+           echo "✅ Task 文档创建成功: $TASK_DOC"
+           echo ""
+           cat "$TASK_DOC"
+         else
+           echo "❌ 创建失败，请使用选项 2 运行 writing-plans"
+           exit 1
+         fi
+       fi
+
+       # 选项 2: 运行 writing-plans
+       if [ "$USER_CHOICE" = "2" ]; then
+         echo ""
+         echo "📝 请先运行 writing-plans 技能创建实施计划和任务文档"
+         echo ""
+         echo "完成后再重新调用 executing-plans 技能"
+         exit 0
+       fi
+
+       # 选项 3: 跳过文档系统
+       if [ "$USER_CHOICE" = "3" ]; then
+         echo "⚠️  跳过文档系统，将不追踪任务进度"
+         echo "继续执行计划..."
+       fi
+     else
+       # 没有 plan 文档
+       echo "📋 未找到计划文档"
+       echo ""
+       echo "推荐工作流程:"
+       echo "1. brainstorming → 创建设计文档（可选）"
+       echo "2. writing-plans → 创建实施计划和任务文档"
+       echo "3. executing-plans → 执行计划"
+       echo ""
+       echo "是否现在运行 writing-plans？(yes/no)"
+
+       if [ "$USER_RESPONSE" = "yes" ]; then
+         echo ""
+         echo "📝 正在调用 writing-plans 技能..."
+         # 技能会自动切换，这里直接退出
+         exit 0
+       else
+         echo "⚠️  没有任务文档，无法追踪进度"
+         echo "继续执行计划..."
+       fi
      fi
-
-     # 从 git log 获取上下文
-     echo ""
-     echo "📝 从 git 获取上下文..."
-     git log --oneline -5 2>/dev/null || true
-     CURRENT_BRANCH=$(git branch --show-current 2>/dev/null || echo "unknown")
-     echo "当前分支: $CURRENT_BRANCH"
-
-     # 提供流程引导建议
-     echo ""
-     echo "💡 推荐工作流程:"
-     echo "   新功能: brainstorming → writing-plans → (当前技能)"
-     echo ""
-
-     # 检查文档系统是否初始化
-     if [ ! -d "docs/active" ]; then
-       echo "📋 文档系统未初始化。运行 'horspowers:document-management' 初始化文档系统。"
-     fi
-
-     echo "继续使用可用上下文执行..."
    fi
    ```
 
 2. **Read related documents** (if specified in task document):
    ```bash
-   # 设计文档 (如果在任务文档中链接)
-   DESIGN_DOC="docs/plans/YYYY-MM-DD-design-<topic>.md"
-   if [ -f "$DESIGN_DOC" ]; then
-     echo "✅ 设计文档: $DESIGN_DOC"
-     cat "$DESIGN_DOC"
-   fi
+   # 只有当 TASK_DOC 文件存在时才读取相关文档
+   if [ -f "$TASK_DOC" ]; then
+     # 从任务文档中提取相关文档路径
+     DESIGN_DOC=$(grep "设计文档:" "$TASK_DOC" | sed 's/.*\](\(.*\)).*/\1/')
+     PLAN_DOC=$(grep "计划文档:" "$TASK_DOC" | sed 's/.*\](\(.*\)).*/\1/')
 
-   # 计划文档 (从任务文档的"相关文档"部分获取路径)
-   PLAN_DOC="docs/plans/YYYY-MM-DD-<feature>.md"
-   if [ -f "$PLAN_DOC" ]; then
-     echo "✅ 计划文档: $PLAN_DOC"
-     cat "$PLAN_DOC"
+     # 读取设计文档（如果存在）
+     if [ -n "$DESIGN_DOC" ] && [ -f "docs/plans/$DESIGN_DOC" ]; then
+       echo "✅ 设计文档: docs/plans/$DESIGN_DOC"
+       cat "docs/plans/$DESIGN_DOC"
+     fi
+
+     # 读取计划文档
+     if [ -n "$PLAN_DOC" ] && [ -f "docs/plans/$PLAN_DOC" ]; then
+       echo "✅ 计划文档: docs/plans/$PLAN_DOC"
+       cat "docs/plans/$PLAN_DOC"
+     fi
    fi
    ```
 
@@ -92,7 +160,10 @@ IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
 - Proceed with plan execution
 
 ### Step 1: Load and Review Plan
-1. Read plan file (from task document's "相关文档" or directly)
+1. Read plan file:
+   - If `$TASK_DOC` exists: read from task document's "相关文档" section
+   - If `$PLAN_DOC` exists: read from that path
+   - Otherwise: search for plan in `docs/plans/` or ask user for path
 2. Review critically - identify any questions or concerns about the plan
 3. If concerns: Raise them with your human partner before starting
 4. If no concerns: Create TodoWrite and proceed
