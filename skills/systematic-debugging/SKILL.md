@@ -1,6 +1,6 @@
 ---
 name: systematic-debugging
-description: Use when encountering any bug, test failure, or unexpected behavior, before proposing fixes. 中文触发场景：当用户说'这里有个bug'、'测试失败了'、'为什么报错？'、'帮忙调试一下'、'出问题了'等遇到任何技术问题时使用此技能。
+description: "You MUST use this when the user needs a bug, failure, or unexpected behavior investigated systematically before any fix is proposed. Trigger on requests like '帮忙调试一下'、'先梳理现象、假设和验证步骤'、'确认问题到底在哪一层'、'先缩小问题范围'. Do NOT use this for generic planning or implementation sequencing, and do NOT use it when the first required action is to write a failing or reproducing test; use test-driven-development then. 中文触发场景：当用户说'这里有个bug'、'测试失败了'、'为什么报错？'、'帮忙调试一下'、'出问题了'等遇到任何技术问题时使用此技能。"
 ---
 
 # Systematic Debugging
@@ -14,6 +14,27 @@ Random fixes waste time and create new bugs. Quick patches mask underlying issue
 **Violating the letter of this process is violating the spirit of debugging.**
 
 **Announce at start:** "我正在使用系统化调试技能..." (I'm using systematic debugging...)
+
+## First Response Rule
+
+On the first response after routing into this skill:
+
+- announce that you are using systematic debugging
+- summarize the suspected debugging frame in one sentence
+- ask at most one brief clarifying question if the concrete failing symptom is still unspecified
+
+Do NOT inspect the repository, run tools, or start gathering files before that first response is sent.
+
+## Quick Routing Boundaries
+
+Route here immediately when the user asks to:
+
+- locate the root cause before fixing
+- sort symptoms, hypotheses, and verification steps
+- determine which layer the failure lives in
+- narrow the problem before deciding whether tests or fixes come next
+
+If the user briefly mentions "later we may add tests" but the immediate ask is to locate the issue first, stay in `systematic-debugging`, not `test-driven-development`.
 
 ## The Iron Law
 

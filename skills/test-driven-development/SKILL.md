@@ -1,6 +1,6 @@
 ---
 name: test-driven-development
-description: Use when implementing any feature or bugfix, before writing implementation code. 中文触发场景：当用户说'开始写这个功能'、'实现XXX功能'、'修复这个bug'、'用TDD方式开发'等需要测试驱动开发时使用此技能。
+description: "You MUST use this when the user wants a feature or bugfix driven from a failing test, reproducing case, or acceptance test before implementation code is written. Trigger on requests like '先写失败测试'、'先补一个复现测试'、'先补一个能复现问题的测试'、'把验收行为写成自动化测试'、'先用一个 failing case 把问题固定住'、'drive this from a failing test first'. Do NOT use this when the root cause is still unknown and the immediate need is investigation; use systematic-debugging first. Also do NOT use it for generic test-after implementation work when the user did not ask for test-first flow. 中文触发场景：当用户说'开始写这个功能'、'实现XXX功能'、'修复这个bug'、'用TDD方式开发'等需要测试驱动开发时使用此技能。"
 ---
 
 # Test-Driven Development (TDD)
@@ -14,6 +14,28 @@ Write the test first. Watch it fail. Write minimal code to pass.
 **Violating the letter of the rules is violating the spirit of the rules.**
 
 **Announce at start:** "我正在使用测试驱动开发技能..." (I'm using test-driven development...)
+
+## First Response Rule
+
+On the first response after routing into this skill:
+
+- announce that you are using test-driven development
+- state that the next step is to pin behavior with a failing or reproducing test
+- ask at most one brief clarifying question if the concrete feature or bug to lock down is still unspecified
+
+Do NOT inspect the repository, run tests, or write implementation guidance before that first response is sent.
+
+## Quick Routing Boundaries
+
+Route here immediately when the user asks to:
+
+- write a failing test first
+- add a reproducing test before implementation
+- lock the bug down with a test instead of guessing at a fix
+- fix or build behavior through RED-GREEN-REFACTOR
+
+Do NOT drift to `systematic-debugging` just because the concrete bug details are still thin.
+If the user explicitly asks for a failing or reproducing test first, this skill owns the first move.
 
 ## When to Use
 
@@ -176,13 +198,19 @@ Confirm:
 
 IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
 
+Resolve `docs-core.js` from the Horspowers installation, not from the user's project:
+
+- In Claude Code plugin environments, use `${CLAUDE_PLUGIN_ROOT}/lib/docs-core.js`
+- In Codex or other hosts, resolve the Horspowers installation root first, then import `lib/docs-core.js` from there
+
 **IF test fails unexpectedly (not expected RED phase failure):**
 - This indicates a potential bug in existing code
 - Create bug tracking document:
   ```bash
   # 创建 bug 文档并捕获路径
+  # 先将 HORSPOWERS_ROOT 解析为 Horspowers 安装根目录
   BUG_DOC=$(node -e "
-  const DocsCore = require('./lib/docs-core.js');
+  const DocsCore = require(process.env.HORSPOWERS_ROOT + '/lib/docs-core.js');
   const manager = new DocsCore(process.cwd());
   const result = manager.createActiveDocument('bug', 'Bug: [test name]', \`
 ## 问题描述
@@ -269,8 +297,9 @@ IF `$BUG_DOC` is set (from RED phase):
 
 **Update bug document with fix details:**
 ```bash
+# 先将 HORSPOWERS_ROOT 解析为 Horspowers 安装根目录
 node -e "
-const DocsCore = require('./lib/docs-core.js');
+const DocsCore = require(process.env.HORSPOWERS_ROOT + '/lib/docs-core.js');
 const manager = new DocsCore(process.cwd());
 manager.updateActiveDocument(process.env.BUG_DOC, {
   status: '已修复',
@@ -296,8 +325,9 @@ EOF
 IF `$TASK_DOC` is set (from writing-plans):
 - Also update task document with progress:
   ```bash
+  # 先将 HORSPOWERS_ROOT 解析为 Horspowers 安装根目录
   node -e "
-  const DocsCore = require('./lib/docs-core.js');
+  const DocsCore = require(process.env.HORSPOWERS_ROOT + '/lib/docs-core.js');
   const manager = new DocsCore(process.cwd());
   manager.updateActiveDocument(process.env.TASK_DOC, {
     progress: '已修复 bug: [bug title]'

@@ -1,6 +1,6 @@
 ---
 name: writing-plans
-description: Use when you have a spec or requirements for a multi-step task, before touching code. 中文触发场景：当用户说'帮我写个实施计划'、'怎么实现这个功能？'、'制定开发计划'、'需要详细规划一下'等需要编写实施计划时使用此技能。
+description: "You MUST use this when the user wants an approved spec or agreed approach turned into a concrete step-by-step implementation plan before coding begins. Trigger on requests like '帮我写个实施计划'、'制定开发计划'、'把方案拆成执行步骤'. Do NOT use this when the approach is still unclear or the user is still choosing options; use brainstorming first. 中文触发场景：当用户说'帮我写个实施计划'、'怎么实现这个功能？'、'制定开发计划'、'需要详细规划一下'等需要编写实施计划时使用此技能。"
 ---
 
 # Writing Plans
@@ -16,6 +16,27 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 **Context:** This should be run in a dedicated worktree (created by brainstorming skill).
 
 **Save plans to:** `docs/plans/YYYY-MM-DD-<feature-name>.md`
+
+## First Response Rule
+
+On the first response after routing into this skill:
+
+- announce that you are using writing-plans
+- restate that the next move is to break the approved approach into implementation steps
+- ask at most one brief clarifying question only if the scope, dependencies, or success criteria are still ambiguous
+
+Do NOT create plan files, inspect the repository, gather requirements, or start structuring tasks before that first response is sent.
+
+## Quick Routing Boundaries
+
+Route here immediately when the approach is already accepted and the user asks to:
+
+- break the work into stages, steps, phases, or implementation order
+- hold off on coding for now and convert the chosen direction into an execution plan
+- structure work into reviewable batches before any implementation starts
+
+Do NOT drift to `brainstorming` just because the user says "先别做" or "先别动代码".
+If the direction is already approved and the user wants staged breakdown, this skill is still the correct route.
 
 ## Bite-Sized Task Granularity
 
@@ -33,7 +54,7 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 ```markdown
 # [功能名称] 实施计划
 
-> **For Claude:** REQUIRED SUB-SKILL: Use horspowers:executing-plans to implement this plan task-by-task.
+> **Execution note:** After this plan is approved, use `horspowers:executing-plans` or `horspowers:subagent-driven-development` to implement it task-by-task in the current host.
 
 **日期**: YYYY-MM-DD
 
@@ -119,8 +140,9 @@ IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
   **Step 3: Create task tracking document (动态追踪):**
   ```bash
   # 创建任务文档并捕获路径
+  # 先将 HORSPOWERS_ROOT 解析为 Horspowers 安装根目录
   TASK_DOC=$(node -e "
-  const DocsCore = require('./lib/docs-core.js');
+  const DocsCore = require(process.env.HORSPOWERS_ROOT + '/lib/docs-core.js');
   const manager = new DocsCore(process.cwd());
 
   // 构建相关文档链接
@@ -141,8 +163,9 @@ IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
   **Step 4: Set active task for progress tracking:**
   ```bash
   # 设置活跃任务，供后续技能使用
+  # 先将 HORSPOWERS_ROOT 解析为 Horspowers 安装根目录
   node -e "
-  const DocsCore = require('./lib/docs-core.js');
+  const DocsCore = require(process.env.HORSPOWERS_ROOT + '/lib/docs-core.js');
   const manager = new DocsCore(process.cwd());
   manager.setActiveTask('$TASK_DOC', 'task');
   "
@@ -160,8 +183,9 @@ IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
   **Step 5: Check core document count (复杂度控制):**
   ```bash
   # 检查核心文档数量
+  # 先将 HORSPOWERS_ROOT 解析为 Horspowers 安装根目录
   node -e "
-  const DocsCore = require('./lib/docs-core.js');
+  const DocsCore = require(process.env.HORSPOWERS_ROOT + '/lib/docs-core.js');
   const manager = new DocsCore(process.cwd());
   const count = manager.countCoreDocs('[feature-name]');
   console.log('Core documents:', count.total);
@@ -170,6 +194,8 @@ IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
   }
   "
   ```
+
+  In Claude Code plugin environments, resolve the helper from `${CLAUDE_PLUGIN_ROOT}`. In Codex or other hosts, resolve the Horspowers installation root first, then import `lib/docs-core.js` from there. Do not assume the user's project contains this module.
 
   IF core document count > 3:
     WARN user: "当前核心文档数量为 ${count.total} 个，超过了建议的 3 个上限。建议检查是否所有文档都是必需的。"
@@ -217,7 +243,7 @@ After the plan review gate passes (and creating task doc if enabled), offer exec
 **If Subagent-Driven chosen:**
 - **REQUIRED SUB-SKILL:** Use horspowers:subagent-driven-development
 - Stay in this session
-- Fresh subagent per task + code review
+- Fresh helper agent per task + code review
 
 **If Parallel Session chosen:**
 - Guide them to open new session in worktree

@@ -1,13 +1,35 @@
 ---
 name: requesting-code-review
-description: Use when completing tasks, implementing major features, or before merging to verify work meets requirements. 中文触发场景：当用户说'帮我审查代码'、'检查一下代码质量'、'代码写完了帮我看看'等需要代码审查时使用此技能。
+description: "You MUST use this when the user asks for a formal or lightweight review of existing changes to find bugs, regressions, omissions, or requirement mismatches before merge, release, or further implementation. Trigger on requests like '帮我审查代码'、'上线前过一遍这批修改'、'帮我过一遍有没有遗漏'、'看看这版实现是不是偏离需求'、'快速扫一下这次提交有没有明显问题'、'review these changes for regressions'. Do NOT use this when the user wants implementation help, fresh planning, or debugging rather than review findings on existing changes. 中文触发场景：当用户说'帮我审查代码'、'检查一下代码质量'、'代码写完了帮我看看'等需要代码审查时使用此技能。"
 ---
 
 # Requesting Code Review
 
-Dispatch horspowers:code-reviewer subagent to catch issues before they cascade.
+Dispatch a dedicated code-review helper agent to catch issues before they cascade.
 
 **Core principle:** Review early, review often.
+
+## First Response Rule
+
+On the first response after routing into this skill:
+
+- announce that you are handling the request as a code review
+- summarize the review target in one sentence
+- ask at most one brief clarifying question only if the review scope is ambiguous (for example base branch, target diff, or whether to review working tree vs commits)
+
+Do NOT inspect diffs, run git commands, dispatch helpers, or start reporting findings before that first response is sent.
+
+## Quick Routing Boundaries
+
+Route here immediately when the user asks to:
+
+- check whether a completed implementation has omissions, regressions, or obvious issues
+- verify whether the current version has drifted from requirements
+- quickly scan a finished change or commit before moving to the next task
+- review existing work before merge, release, or further implementation
+
+Do NOT drift to `brainstorming` just because the prompt mentions "需求" or future direction.
+If the target is an implementation that already exists and the user wants evaluation, this is code review.
 
 ## Document Context Loading (文档上下文传递)
 
@@ -100,9 +122,13 @@ BASE_SHA=$(git rev-parse HEAD~1)  # or origin/main
 HEAD_SHA=$(git rev-parse HEAD)
 ```
 
-**2. Dispatch code-reviewer subagent:**
+**2. Dispatch code-reviewer helper:**
 
-Use Task tool with horspowers:code-reviewer type, fill template at `code-reviewer.md`
+Use the host's native subagent/helper mechanism and fill the template at `code-reviewer.md`.
+
+- In Claude Code: dispatch the `horspowers:code-reviewer` subagent type
+- In Codex: follow `using-horspowers/references/codex-tools.md` and spawn a native agent with the filled template
+- If the host does not support subagents: perform the equivalent review locally using the same prompt and output structure
 
 **Placeholders:**
 - `{WHAT_WAS_IMPLEMENTED}` - What you just built
@@ -127,7 +153,7 @@ You: Let me request code review before proceeding.
 BASE_SHA=$(git log --oneline | grep "Task 1" | head -1 | awk '{print $1}')
 HEAD_SHA=$(git rev-parse HEAD)
 
-[Dispatch horspowers:code-reviewer subagent]
+[Dispatch code-review helper]
   WHAT_WAS_IMPLEMENTED: Verification and repair functions for conversation index
   PLAN_OR_REQUIREMENTS: Task 2 from docs/plans/deployment-plan.md
   BASE_SHA: a7981ec

@@ -1,6 +1,6 @@
 ---
 name: executing-plans
-description: Use when you have a written implementation plan to execute in a separate session with review checkpoints. 中文触发场景：当用户说'按计划执行'、'开始实施计划'、'执行这个开发计划'等需要执行已有计划时使用此技能。
+description: "You MUST use this when the user wants an existing implementation plan executed in batches with explicit checkpoints, pause-and-review moments, or between-batch progress handoffs. Trigger on requests like '按这份计划开始做，先完成第一批，然后停下来汇报进展'、'按计划往前推，不过中间要给我几个检查点'、'我们就照文档里的步骤推进，每做完一个阶段都回顾一次'. Do NOT use this when the user still needs the plan written first; use `writing-plans` then. Do NOT use this when the work should continue autonomously in the current session across mostly independent tasks; use `subagent-driven-development` then. 中文触发场景：当用户说'按计划执行'、'开始实施计划'、'执行这个开发计划'、'先做一批再汇报'等需要执行已有计划并保留检查点时使用此技能。"
 ---
 
 # Executing Plans
@@ -12,6 +12,31 @@ Load plan, review critically, execute tasks in batches, report for review betwee
 **Core principle:** Batch execution with checkpoints for architect review.
 
 **Announce at start:** "我正在使用执行计划技能来实施这个计划..." (I'm using the executing-plans skill to implement this plan...)
+
+## First Response Rule
+
+On the first response after routing into this skill:
+
+- announce that you are using executing-plans
+- restate that the next move is to execute an existing plan in batches with checkpoints
+- ask at most one brief clarifying question only if the referenced plan or checkpoint scope is still ambiguous
+
+Do NOT load plan files, inspect the repository, create trackers, or start executing any task before that first response is sent.
+
+## Quick Routing Boundaries
+
+Route here immediately when the user asks to:
+
+- continue an existing plan with checkpoints, pauses, or review stops
+- finish one batch or phase, then come back with progress
+- move through documented steps while keeping the work easy to pause and resume
+- execute first, then stop so the user can decide the next batch
+
+Do NOT drift to `writing-plans` just because the prompt mentions stages or review.
+If the plan already exists and the user wants checkpointed execution, this skill owns the first move.
+
+Do NOT drift to `subagent-driven-development` unless the user emphasizes current-session continuous execution of mostly independent tasks without pause-and-review checkpoints.
+If the prompt says each subtask should self-review and then immediately continue to the next task, that is not a checkpointed stop. Route that pattern to `subagent-driven-development`.
 
 ## The Process
 
@@ -41,67 +66,10 @@ IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
        echo "$PLAN_DOCS" | nl -w2 -s'. '
        echo ""
 
-       # 使用 AskUserQuestion 询问用户
-       # (AI 会自动处理，这里列出选项供参考)
-       echo "请选择:"
+       echo "接下来需要让用户选择："
        echo "1. 从现有 plan 创建 task 文档（推荐）"
-       echo "2. 运行完整的 writing-plans 流程"
-       echo "3. 跳过文档系统，直接执行计划"
-       echo ""
-
-       # 选项 1: 从 plan 创建 task
-       if [ "$USER_CHOICE" = "1" ]; then
-         # 获取最新的 plan 文档
-         LATEST_PLAN=$(echo "$PLAN_DOCS" | head -1)
-         PLAN_NAME=$(basename "$LATEST_PLAN" .md)
-
-         echo "正在从 $LATEST_PLAN 创建 task 文档..."
-
-         TASK_DOC=$(node -e "
-           const { UnifiedDocsManager } = require('\${CLAUDE_PLUGIN_ROOT}/lib/docs-core.js');
-           const manager = new UnifiedDocsManager(process.cwd());
-
-           // 从 plan 文件名提取标题
-           const planName = '${PLAN_NAME}';
-           const title = 'Implement: ' + planName.replace(/^\\d{4}-\\d{2}-\\d{2}-/, '');
-
-           const result = manager.createActiveDocument('task', title, null, {
-             plan: planName + '.md'
-           });
-
-           if (result.success) {
-             console.log(result.path);
-           } else {
-             console.error('Error:', result.error);
-             process.exit(1);
-           }
-         ")
-
-         if [ $? -eq 0 ] && [ -f "$TASK_DOC" ]; then
-           export TASK_DOC
-           echo "✅ Task 文档创建成功: $TASK_DOC"
-           echo ""
-           cat "$TASK_DOC"
-         else
-           echo "❌ 创建失败，请使用选项 2 运行 writing-plans"
-           exit 1
-         fi
-       fi
-
-       # 选项 2: 运行 writing-plans
-       if [ "$USER_CHOICE" = "2" ]; then
-         echo ""
-         echo "📝 请先运行 writing-plans 技能创建实施计划和任务文档"
-         echo ""
-         echo "完成后再重新调用 executing-plans 技能"
-         exit 0
-       fi
-
-       # 选项 3: 跳过文档系统
-       if [ "$USER_CHOICE" = "3" ]; then
-         echo "⚠️  跳过文档系统，将不追踪任务进度"
-         echo "继续执行计划..."
-       fi
+       echo "2. 先运行 writing-plans"
+       echo "3. 跳过文档系统直接执行"
      else
        # 没有 plan 文档
        echo "📋 未找到计划文档"
@@ -111,20 +79,12 @@ IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
        echo "2. writing-plans → 创建实施计划和任务文档"
        echo "3. executing-plans → 执行计划"
        echo ""
-       echo "是否现在运行 writing-plans？(yes/no)"
-
-       if [ "$USER_RESPONSE" = "yes" ]; then
-         echo ""
-         echo "📝 正在调用 writing-plans 技能..."
-         # 技能会自动切换，这里直接退出
-         exit 0
-       else
-         echo "⚠️  没有任务文档，无法追踪进度"
-         echo "继续执行计划..."
-       fi
+       echo "此时应让用户决定是否先运行 writing-plans，而不是假设 shell 变量已经存在。"
      fi
    fi
    ```
+
+   Treat the shell block above as context-gathering guidance, not as a literal interactive script. When a user choice is needed, use the current host's native question/input mechanism.
 
 2. **Read related documents** (if specified in task document):
    ```bash
@@ -166,7 +126,7 @@ IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
    - Otherwise: search for plan in `docs/plans/` or ask user for path
 2. Review critically - identify any questions or concerns about the plan
 3. If concerns: Raise them with your human partner before starting
-4. If no concerns: Create TodoWrite and proceed
+4. If no concerns: create the host's native plan/todo tracker entry and proceed
 
 ### Step 2: Execute Batch
 **Default: First 3 tasks**

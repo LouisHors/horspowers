@@ -1,6 +1,6 @@
 ---
 name: using-git-worktrees
-description: Use when starting feature work that needs isolation from the current workspace or before executing implementation plans - detects existing isolation first, prefers native worktree tools, and falls back to git worktree only when needed. 中文触发场景：当用户说'创建新的开发分支'、'需要隔离的开发环境'、'用 worktree 开发'、'创建独立工作区'等需要 Git worktree 隔离时使用此技能。
+description: "You MUST use this when starting feature work that needs isolation from the current workspace or before executing implementation plans. Detects existing isolation first, prefers native worktree tools, and falls back to git worktree only when needed. Trigger on requests like '创建新的开发分支'、'需要隔离的开发环境'、'用 worktree 开发'、'创建独立工作区'. Do NOT use this when the user is already in an appropriate isolated context. 中文触发场景：当用户说'创建新的开发分支'、'需要隔离的开发环境'、'用 worktree 开发'、'创建独立工作区'等需要 Git worktree 隔离时使用此技能。"
 ---
 
 # Using Git Worktrees
