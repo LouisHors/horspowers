@@ -5,6 +5,12 @@
 .horspowers-config.yaml
 .horspowers-version
 
+# Local docs metadata and archives
+.docs-metadata/
+docs/archive/
+docs/unified-document-system-guide.md
+
+
 # macOS
 .DS_Store
 .DS_Store?
