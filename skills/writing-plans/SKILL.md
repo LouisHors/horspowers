@@ -17,6 +17,16 @@ Assume they are a skilled developer, but know almost nothing about our toolset o
 
 **Save plans to:** `docs/plans/YYYY-MM-DD-<feature-name>.md`
 
+## First Response Rule
+
+On the first response after routing into this skill:
+
+- announce that you are using writing-plans
+- restate that the next move is to break the approved approach into implementation steps
+- ask at most one brief clarifying question only if the scope, dependencies, or success criteria are still ambiguous
+
+Do NOT create plan files, inspect the repository, gather requirements, or start structuring tasks before that first response is sent.
+
 ## Quick Routing Boundaries
 
 Route here immediately when the approach is already accepted and the user asks to:
