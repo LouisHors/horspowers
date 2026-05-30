@@ -7,6 +7,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
 AGENTS_SKILLS_DIR="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 
+# shellcheck source=tests/codex/skill-dir-helper.sh
+source "$SCRIPT_DIR/skill-dir-helper.sh"
+
 echo "--- Document Review Flow ---"
 
 if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
@@ -14,8 +17,7 @@ if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
   exit 0
 fi
 
-mkdir -p "$AGENTS_SKILLS_DIR"
-ln -sfn "$REPO_ROOT/skills" "$AGENTS_SKILLS_DIR/horspowers"
+ensure_horspowers_skill_dir "$REPO_ROOT" "$AGENTS_SKILLS_DIR"
 
 output_file="$(mktemp)"
 cleanup() {

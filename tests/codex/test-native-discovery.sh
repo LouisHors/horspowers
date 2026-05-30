@@ -7,6 +7,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
 AGENTS_SKILLS_DIR="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 
+# shellcheck source=tests/codex/skill-dir-helper.sh
+source "$SCRIPT_DIR/skill-dir-helper.sh"
+
 echo "--- Native Discovery ---"
 
 if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
@@ -14,13 +17,12 @@ if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
   exit 0
 fi
 
-mkdir -p "$AGENTS_SKILLS_DIR"
-ln -sfn "$REPO_ROOT/skills" "$AGENTS_SKILLS_DIR/horspowers"
+ensure_horspowers_skill_dir "$REPO_ROOT" "$AGENTS_SKILLS_DIR"
 
-if [ -L "$AGENTS_SKILLS_DIR/horspowers" ]; then
-  echo "  [PASS] native skill symlink exists"
+if assert_horspowers_skill_dir "$AGENTS_SKILLS_DIR"; then
+  echo "  [PASS] native skill directory is available"
 else
-  echo "  [FAIL] native skill symlink missing"
+  echo "  [FAIL] native skill directory missing"
   exit 1
 fi
 

@@ -36,10 +36,10 @@ else
   exit 1
 fi
 
-if [ -L "$skills_dir/horspowers" ]; then
-  echo "  [PASS] script created symlink in overridden skills dir"
+if [ -f "$skills_dir/horspowers/using-horspowers/SKILL.md" ]; then
+  echo "  [PASS] script created usable skill directory in overridden skills dir"
 else
-  echo "  [FAIL] script did not create symlink in overridden skills dir"
+  echo "  [FAIL] script did not create usable skill directory in overridden skills dir"
   sed -n '1,160p' "$output_file"
   exit 1
 fi

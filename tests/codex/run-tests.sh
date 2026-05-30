@@ -9,6 +9,7 @@ echo " Codex Compatibility Test Suite"
 echo "========================================"
 echo ""
 echo "Using Codex binary: ${CODEX_BIN:-codex}"
+echo "Note: native discovery setup accepts a symlink, junction, or copied horspowers skill directory."
 echo ""
 
 bash "$SCRIPT_DIR/test-legacy-cli.sh"

@@ -7,6 +7,9 @@ REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
 tmp_root=""
 
+# shellcheck source=tests/codex/skill-dir-helper.sh
+source "$SCRIPT_DIR/skill-dir-helper.sh"
+
 if [ -n "${AGENTS_SKILLS_DIR:-}" ]; then
   skills_dir="$AGENTS_SKILLS_DIR"
 else
@@ -21,8 +24,7 @@ if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
   exit 0
 fi
 
-mkdir -p "$skills_dir"
-ln -sfn "$REPO_ROOT/skills" "$skills_dir/horspowers"
+ensure_horspowers_skill_dir "$REPO_ROOT" "$skills_dir"
 
 output_file="$(mktemp)"
 cleanup() {
