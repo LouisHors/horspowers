@@ -74,8 +74,10 @@ if [ "$needs_upgrade_check" = "true" ]; then
 fi
 
 # Detect configuration file status using config-manager.js
-config_status_output=$(node -e "
-const { detectConfigFiles, readConfig, checkConfigUpdate, validateConfig } = require('./lib/config-manager.js');
+config_status_output=$(PLUGIN_ROOT="$PLUGIN_ROOT" node -e "
+const path = require('path');
+const pluginRoot = process.env.PLUGIN_ROOT;
+const { detectConfigFiles, readConfig, checkConfigUpdate, validateConfig } = require(path.join(pluginRoot, 'lib/config-manager.js'));
 const detection = detectConfigFiles(process.cwd());
 
 if (detection.hasOld) {
