@@ -138,6 +138,11 @@ Restart Codex if the session was already open when the update was pulled.
    ls -la ~/.agents/skills/horspowers
    ```
 
+   On Windows, a junction or a plain copied directory with the Horspowers
+   `SKILL.md` files is also sufficient for local compatibility tests. The
+   important requirement is that `~/.agents/skills/horspowers/using-horspowers/SKILL.md`
+   exists and is readable.
+
 2. Verify the repo contains skills:
    ```bash
    ls ~/.codex/horspowers/skills
