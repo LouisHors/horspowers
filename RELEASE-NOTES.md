@@ -1,5 +1,16 @@
 # Horspowers Release Notes
 
+## v4.5.1 (2026-06-18)
+
+### Bug Fixes
+
+**修复 `session-start.sh` hook 的路径解析问题**
+- 将 `require('./lib/config-manager.js')` 改为基于 `PLUGIN_ROOT` 的绝对路径引用
+- 解决 Claude Code 从项目目录启动 hook 时 `MODULE_NOT_FOUND` 导致退出码 1 的问题
+- 兼容插件缓存目录、本地源码目录以及手动直接运行等多种调用场景
+
+---
+
 ## v4.5.0 (2026-05-13)
 
 ### Improvements
