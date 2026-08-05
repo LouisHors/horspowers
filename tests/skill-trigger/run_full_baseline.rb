@@ -161,6 +161,14 @@ def create_route_fixture(sample_dir, host, sample)
     "active_route" => nil
   ))
 
+  if ROUTE_ONLY && host == "codex"
+    exclusive_write(File.join(fixture_root, "AGENTS.md"), route_only_agents_instructions(
+      "fake_home" => fake_home,
+      "fixture_root" => fixture_root,
+      "route_input_path" => input_path
+    ))
+  end
+
   {
     "fake_home" => fake_home,
     "fixture_root" => fixture_root,
@@ -188,6 +196,14 @@ def route_only_instruction(fixture)
   INSTRUCTION
 end
 
+def route_only_agents_instructions(fixture)
+  <<~INSTRUCTIONS
+    # Route-only evaluation instructions
+
+    #{route_only_instruction(fixture)}
+  INSTRUCTIONS
+end
+
 def build_command(host:, prompt:, startup_text:, fixture:, route_only: ROUTE_ONLY)
   effective_startup = startup_text.to_s.dup
   effective_startup = "#{route_only_instruction(fixture)}\n\n#{effective_startup}" if route_only
@@ -209,7 +225,9 @@ def build_command(host:, prompt:, startup_text:, fixture:, route_only: ROUTE_ONL
       else
         "#{effective_startup}\n\nUser request:\n#{prompt}"
       end
-    command = [CODEX_BIN, "exec", "--json", effective_prompt]
+    command = [CODEX_BIN, "exec", "--json"]
+    command += ["-C", fixture.fetch("fixture_root")] if route_only
+    command << effective_prompt
   else
     raise "unsupported host: #{host}"
   end

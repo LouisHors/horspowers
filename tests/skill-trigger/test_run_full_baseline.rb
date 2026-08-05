@@ -8,6 +8,7 @@ class RunFullBaselineTest < Minitest::Test
   def fixture
     {
       "fake_home" => "/fixture/home",
+      "fixture_root" => "/fixture/project",
       "route_input_path" => "/fixture/route-input.json"
     }
   end
@@ -48,5 +49,14 @@ class RunFullBaselineTest < Minitest::Test
 
     assert_operator effective_prompt.index("User request:"), :<, effective_prompt.index("ROUTE-ONLY EVALUATION")
     assert_includes effective_prompt, "final response MUST be exactly `Route: <route>`"
+    assert_equal ["-C", "/fixture/project"], command.each_cons(2).find { |pair| pair == ["-C", "/fixture/project"] }
+  end
+
+  def test_builds_fixture_scoped_route_only_agents_instructions
+    instructions = route_only_agents_instructions(fixture)
+
+    assert_includes instructions, "ROUTE-ONLY EVALUATION"
+    assert_includes instructions, "mandatory for every user request"
+    assert_includes instructions, "final response MUST be exactly `Route: <route>`"
   end
 end
