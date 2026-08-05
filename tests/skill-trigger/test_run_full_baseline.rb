@@ -92,6 +92,20 @@ class RunFullBaselineTest < Minitest::Test
     )
   end
 
+  def test_route_only_fixture_agents_instructions_use_the_same_short_local_entry
+    root = Dir.mktmpdir("skill-trigger-route-only-agents-")
+    sample_dir = File.join(root, "artifact")
+    Dir.mkdir(sample_dir)
+
+    route_fixture = create_route_fixture(sample_dir, "codex", {
+      "user_message" => "请先系统排查根因"
+    }, route_only: true)
+    instructions = File.read(File.join(route_fixture.fetch("fixture_root"), "AGENTS.md"))
+
+    assert_includes instructions, "HOME='.route-home' node 'route-request.mjs' < 'route-input.json'"
+    refute_includes instructions, ROUTE_SCRIPT
+  end
+
   def test_uses_an_opaque_route_only_host_prompt_for_both_hosts
     ["claude", "codex"].each do |host|
       command = build_command(

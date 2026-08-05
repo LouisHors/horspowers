@@ -146,7 +146,7 @@ def current_startup_profile(host)
   PROFILE
 end
 
-def create_route_fixture(sample_dir, host, sample)
+def create_route_fixture(sample_dir, host, sample, route_only: ROUTE_ONLY)
   fixture_root = Dir.mktmpdir("skill-trigger-#{host}-git-fixture-")
   git_init = run_with_capture(["git", "init"], cwd: fixture_root, timeout_seconds: 15)
   raise "could not initialize Git fixture: #{git_init[:stderr]}" unless git_init[:success]
@@ -170,11 +170,14 @@ def create_route_fixture(sample_dir, host, sample)
   route_script_command_path = "route-request.mjs"
   File.symlink(ROUTE_SCRIPT, File.join(fixture_root, route_script_command_path))
 
-  if ROUTE_ONLY && host == "codex"
+  if route_only && host == "codex"
     exclusive_write(File.join(fixture_root, "AGENTS.md"), route_only_agents_instructions(
       "fake_home" => fake_home,
       "fixture_root" => fixture_root,
-      "route_input_path" => input_path
+      "route_input_path" => input_path,
+      "route_home" => route_home,
+      "route_input_command_path" => route_input_command_path,
+      "route_script_command_path" => route_script_command_path
     ))
   end
 
