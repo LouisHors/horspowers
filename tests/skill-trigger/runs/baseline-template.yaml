@@ -27,19 +27,34 @@ corpus:
   source: REPLACE_WITH_CORPUS_PATH
   sample_count: REPLACE_WITH_CORPUS_SAMPLE_COUNT
 
+run_metadata:
+  routing_rule_version: REPLACE_WITH_RULE_VERSION
+  route_script: REPLACE_WITH_ABSOLUTE_ROUTE_SCRIPT
+  artifact_root: REPLACE_WITH_ARTIFACT_ROOT
+
 summary:
   claude:
+    positive_total: 0
+    negative_total: 0
     exact: 0
     acceptable: 0
     miss: 0
     wrong: 0
     no_trigger_expected: 0
+    over_trigger_count: 0
+    over_trigger_rate: 0.0
+    direct_without_tools: 0
   codex:
+    positive_total: 0
+    negative_total: 0
     exact: 0
     acceptable: 0
     miss: 0
     wrong: 0
     no_trigger_expected: 0
+    over_trigger_count: 0
+    over_trigger_rate: 0.0
+    direct_without_tools: 0
   host_divergence:
     outcome_count: 0
     routing_count: 0
@@ -48,6 +63,7 @@ results:
   - prompt_id: EXAMPLE_001
     user_message: "I have a feature idea, but I have not figured out the approach yet."
     expected_skill: brainstorming
+    expected_route: brainstorming
     secondary_ok_skills: []
     should_trigger: true
     corpus_notes: Example prompt note.
@@ -73,6 +89,7 @@ results:
   - prompt_id: EXAMPLE_002
     user_message: "The design is approved. Break it into implementation steps."
     expected_skill: writing-plans
+    expected_route: planning
     secondary_ok_skills: []
     should_trigger: true
     corpus_notes: Example prompt note.

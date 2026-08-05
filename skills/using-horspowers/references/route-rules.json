@@ -24,73 +24,73 @@
   "routes": [
     {
       "route": "brainstorming",
-      "explicit_patterns": ["horspowers:brainstorming", "使用 brainstorming", "使用头脑风暴"],
+      "explicit_patterns": ["horspowers:brainstorming", "使用 brainstorming", "使用头脑风暴", "先别写代码.*怎么设计", "先帮我澄清.*用户价值", "大方向想明白.*再决定"],
       "strong_groups": [
-        { "id": "design_intent", "any_patterns": ["设计", "想法", "方案", "design", "idea", "approach"] },
-        { "id": "direction_unsettled", "any_patterns": ["未确定", "还不清楚", "探索", "帮我想", "unclear", "explore"] }
+        { "id": "design_intent", "any_patterns": ["设计", "想法", "方案", "方向", "范围", "交互", "design", "idea", "approach"] },
+        { "id": "direction_unsettled", "any_patterns": ["未确定", "还不清楚", "没想清楚", "拿不准", "探索", "帮我想", "narrowing the scope", "unclear", "explore"] }
       ],
-      "weak_patterns": ["建议", "方向", "思路", "recommend", "option"]
+      "weak_patterns": ["建议", "思路", "recommend", "option"]
     },
     {
       "route": "debugging",
-      "explicit_patterns": ["horspowers:systematic-debugging", "使用 systematic-debugging", "使用系统化调试"],
+      "explicit_patterns": ["horspowers:systematic-debugging", "使用 systematic-debugging", "使用系统化调试", "先系统排查根因", "有步骤的 debug"],
       "strong_groups": [
-        { "id": "failure_signal", "any_patterns": ["bug", "失败", "异常", "error", "报错"] },
-        { "id": "diagnosis_request", "any_patterns": ["根因", "缩小范围", "定位", "isolate", "root cause"] }
+        { "id": "failure_signal", "any_patterns": ["bug", "失败", "异常", "问题", "现象", "error", "报错", "something is off"] },
+        { "id": "diagnosis_request", "any_patterns": ["根因", "缩小.*范围", "定位", "在哪一层", "isolate", "isolating", "root cause", "debug"] }
       ],
-      "weak_patterns": ["排查", "问题", "故障", "diagnose"]
+      "weak_patterns": ["排查", "故障", "diagnose"]
     },
     {
       "route": "tdd",
-      "explicit_patterns": ["horspowers:test-driven-development", "使用 test-driven-development", "使用 tdd"],
+      "explicit_patterns": ["horspowers:test-driven-development", "使用 test-driven-development", "使用 tdd", "用 tdd", "先用一个 failing case"],
       "strong_groups": [
-        { "id": "change_signal", "any_patterns": ["功能", "bugfix", "修复", "改成", "fix", "bug"] },
-        { "id": "test_first", "any_patterns": ["失败测试", "复现测试", "failing test", "acceptance test first", "先写测试"] }
+        { "id": "change_signal", "any_patterns": ["功能", "feature", "bugfix", "修复", "改成", "改代码", "实现", "fix", "bug"] },
+        { "id": "test_first", "any_patterns": ["失败测试", "复现.*测试", "failing test", "failing case", "acceptance test first", "验收行为", "先写测试"] }
       ],
       "weak_patterns": ["测试驱动", "red green", "测试先行"]
     },
     {
       "route": "planning",
-      "explicit_patterns": ["horspowers:writing-plans", "使用 writing-plans", "实施计划", "落地计划", "implementation plan", "execution plan", "分步骤.*(计划|落地)", "(拆成|整理成).*(步骤|阶段).*(先别|不要).*(做|开始|实现)"],
+      "explicit_patterns": ["horspowers:writing-plans", "使用 writing-plans", "实施计划", "落地计划", "implementation plan", "execution plan", "分步骤.*(计划|落地)", "(拆成|整理成).*(步骤|阶段).*(先别|不要).*(做|开始|实现)", "大方向差不多.*先做什么"],
       "strong_groups": [
-        { "id": "direction_settled", "any_patterns": ["已批准", "已经批准", "已确认", "approved", "agreed", "大方向差不多", "设计我认可了"] },
-        { "id": "steps_requested", "any_patterns": ["实施步骤", "拆步骤", "implementation plan", "break into steps", "下一步", "推进"] }
+        { "id": "direction_settled", "any_patterns": ["已批准", "已经批准", "已确认", "方案已经定了", "设计我认可了", "approved", "agreed", "大方向差不多"] },
+        { "id": "steps_requested", "any_patterns": ["具体开发步骤", "实施步骤", "拆步骤", "implementation plan", "break into steps", "下一步", "先做什么", "推进"] }
       ],
-      "weak_patterns": ["计划", "步骤", "阶段", "plan"]
+      "weak_patterns": ["实施计划", "落地计划", "implementation plan", "execution plan"]
     },
     {
       "route": "checkpoint_execution",
-      "explicit_patterns": ["horspowers:executing-plans", "使用 executing-plans", "分批执行", "检查点执行"],
+      "explicit_patterns": ["horspowers:executing-plans", "使用 executing-plans", "分批执行", "检查点执行", "按这份计划开始做", "照文档里的步骤推进", "continue with the plan"],
       "strong_groups": [
-        { "id": "existing_plan", "any_patterns": ["已有计划", "按计划", "现有计划", "existing plan"] },
-        { "id": "checkpoint_requested", "any_patterns": ["分批", "暂停", "检查点", "每批停下来", "checkpoint"] }
+        { "id": "existing_plan", "any_patterns": ["已有计划", "按计划", "按这份计划", "现有计划", "计划里", "计划里的任务", "文档里的步骤", "continue with the plan", "existing plan"] },
+        { "id": "checkpoint_requested", "any_patterns": ["分批", "暂停", "停一下", "检查点", "每批停下来", "回顾", "再决定", "pause", "checkpoint"] }
       ],
       "weak_patterns": ["汇报", "批次", "停下来"]
     },
     {
       "route": "continuous_execution",
-      "explicit_patterns": ["horspowers:subagent-driven-development", "使用 subagent-driven-development", "连续推进"],
+      "explicit_patterns": ["horspowers:subagent-driven-development", "使用 subagent-driven-development", "连续推进", "当前会话.*不用每一步都等我"],
       "strong_groups": [
-        { "id": "existing_tasks", "any_patterns": ["已有计划", "按计划", "任务列表", "existing plan", "task list"] },
-        { "id": "continuous_requested", "any_patterns": ["连续推进", "无需等待", "不用等我", "independent tasks", "keep moving"] }
+        { "id": "existing_tasks", "any_patterns": ["已有计划", "按计划", "现有计划", "计划里的任务", "任务列表", "开发项", "already have the plan", "existing plan", "task list"] },
+        { "id": "continuous_requested", "any_patterns": ["连续推进", "接着下一个", "一个接一个", "任务比较独立", "不用.*等我", "无需等待", "independent tasks", "keep moving"] }
       ],
       "weak_patterns": ["继续推进", "连续", "自主"]
     },
     {
       "route": "code_review",
-      "explicit_patterns": ["horspowers:requesting-code-review", "使用 requesting-code-review", "代码审查", "review these changes"],
+      "explicit_patterns": ["horspowers:requesting-code-review", "使用 requesting-code-review", "代码审查", "正式 code review", "review these changes", "上线前请过一遍这批修改"],
       "strong_groups": [
-        { "id": "existing_change", "any_patterns": ["已有实现", "diff", "commit", "变更", "changes"] },
-        { "id": "review_request", "any_patterns": ["bug", "回归", "遗漏", "偏离需求", "regression"] }
+        { "id": "existing_change", "any_patterns": ["已有实现", "改动", "修改", "功能先做完", "实现", "diff", "commit", "提交", "变更", "changes"] },
+        { "id": "review_request", "any_patterns": ["bug", "回归", "明显坑", "明显问题", "过一遍", "遗漏", "偏离需求", "regression"] }
       ],
       "weak_patterns": ["审查", "review", "检查"]
     },
     {
       "route": "docs",
-      "explicit_patterns": ["horspowers:document-management", "使用 document-management", "文档系统", "文档管理"],
+      "explicit_patterns": ["horspowers:document-management", "使用 document-management", "文档系统", "文档管理", "从文档里翻出来", "把已经做完的这批事项从活跃文档里清掉"],
       "strong_groups": [
-        { "id": "document_object", "any_patterns": ["文档系统", "wiki", "已有决策", "docs"] },
-        { "id": "document_action", "any_patterns": ["搜索", "归档", "恢复", "初始化", "search", "archive", "restore", "initialize"] }
+        { "id": "document_object", "any_patterns": ["文档系统", "文档", "wiki", "已有决策", "docs"] },
+        { "id": "document_action", "any_patterns": ["搜索", "找出来", "翻出来", "检查", "归档", "恢复", "初始化", "recover", "search", "archive", "restore", "initialize"] }
       ],
       "weak_patterns": ["文档", "资料", "记录"]
     }
@@ -140,6 +140,6 @@
       { "id": "short_self_contained_explanation", "any_patterns": ["是什么", "简短解释", "what is", "explain briefly"] },
       { "id": "command_syntax_only", "any_patterns": ["命令语法", "怎么写命令", "command syntax"] }
     ],
-    "deny_patterns": ["修改", "创建", "修复", "调试", "计划", "评审", "测试", "执行", "仓库", "模块", "路径", "wiki", "当前", "最新", "线上", "继续", "按刚才", "modify", "create", "fix", "debug", "plan", "review", "test", "execute", "repository", "latest", "current", "continue", "horspowers:"]
+    "deny_patterns": ["修改", "创建", "修复", "调试", "计划", "评审", "测试", "执行", "仓库", "模块", "路径", "wiki", "docs", "当前", "最新", "线上", "继续", "按刚才", "工作流", "workflow", "router", "skill", "插件", "plugin", "git", "modify", "create", "fix", "debug", "plan", "review", "test", "execute", "repository", "latest", "current", "continue", "horspowers:"]
   }
 }
