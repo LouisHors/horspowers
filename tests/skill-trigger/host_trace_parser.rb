@@ -26,6 +26,7 @@ module HostTraceParser
     qmd_calls = 0
     other_tool_calls = 0
     runtime_failures = []
+    seen_tool_event_ids = {}
 
     stdout.to_s.each_line.with_index(1) do |line, line_number|
       next if line.strip.empty?
@@ -37,12 +38,16 @@ module HostTraceParser
         next
       end
 
-      strings = collect_strings(event)
+      strings = trace_strings(host, event)
       strings.flat_map { |value| value.scan(TARGET_SKILL) }.each do |skill|
         target_skill_mentions << skill unless target_skill_mentions.include?(skill)
       end
 
-      tool_events(event).each do |tool_event|
+      tool_events(host, event).each do |tool_event|
+        tool_event_id = tool_event["id"]
+        next if tool_event_id && seen_tool_event_ids[tool_event_id]
+
+        seen_tool_event_ids[tool_event_id] = true if tool_event_id
         text = JSON.generate(tool_event)
         if text.match?(ROUTER_SCRIPT)
           router_calls += 1
@@ -65,7 +70,7 @@ module HostTraceParser
 
     stderr.to_s.each_line do |line|
       failure = line.strip
-      runtime_failures << failure unless failure.empty?
+      runtime_failures << failure if runtime_failure_line?(failure)
     end
 
     TraceResult.new(
@@ -90,13 +95,30 @@ module HostTraceParser
     values
   end
 
-  def tool_events(value, events = [])
+  def trace_strings(host, event)
+    return collect_strings(event) unless host == "claude"
+    return [] unless event["type"] == "assistant"
+
+    collect_strings(event.fetch("message", {}))
+  end
+
+  def tool_events(host, value, events = [])
+    if host == "claude"
+      return [] unless value["type"] == "assistant"
+
+      return tool_events_in(value.fetch("message", {}), events)
+    end
+
+    tool_events_in(value, events)
+  end
+
+  def tool_events_in(value, events = [])
     case value
     when Hash
       events << value if TOOL_TYPES.include?(value["type"])
-      value.each_value { |child| tool_events(child, events) }
+      value.each_value { |child| tool_events_in(child, events) }
     when Array
-      value.each { |child| tool_events(child, events) }
+      value.each { |child| tool_events_in(child, events) }
     end
     events
   end
@@ -127,22 +149,12 @@ module HostTraceParser
   end
 
   def runtime_failure_for(event, strings)
-    types = []
-    collect_types(event, types)
-    return nil unless types.any? { |type| %w[error failed failure].include?(type.to_s.downcase) }
+    return nil unless %w[error failed failure].include?(event["type"].to_s.downcase)
 
     strings.find { |value| value.match?(/stream disconnected|runtime failure|timed out|failed/i) } || "runtime failure"
   end
 
-  def collect_types(value, types)
-    case value
-    when Hash
-      types << value["type"] if value.key?("type")
-      types << value["status"] if value.key?("status")
-      value.each_value { |child| collect_types(child, types) }
-    when Array
-      value.each { |child| collect_types(child, types) }
-    end
-    types
+  def runtime_failure_line?(line)
+    line.match?(/stream disconnected|runtime failure|timed out|\Afatal\b|\Apanic\b|\Aerror:/i)
   end
 end

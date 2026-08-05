@@ -108,9 +108,16 @@ def stability_flags(text)
   flags
 end
 
+def load_yaml_file(path)
+  content = File.read(path)
+  Psych.safe_load(content, permitted_classes: [Date], aliases: true)
+rescue ArgumentError
+  Psych.safe_load(content, [Date], [], true)
+end
+
 def startup_profiles_by_host
   @startup_profiles_by_host ||= begin
-    run_metadata = Psych.load_file(File.join(RUNS_DIR, "baseline-template.yaml"), permitted_classes: [Date])
+    run_metadata = load_yaml_file(File.join(RUNS_DIR, "baseline-template.yaml"))
     hosts = run_metadata.fetch("hosts")
     hosts.each_with_object({}) do |(host, meta), acc|
       profile_path = meta["startup_profile"]
@@ -163,8 +170,12 @@ end
 
 def route_only_instruction(fixture)
   <<~INSTRUCTION
-    Evaluation route-only mode. Do not execute the user's request. Do not inspect the repository,
-    invoke qmd, or call any workflow tool other than the single router invocation below.
+    ROUTE-ONLY EVALUATION. The router invocation below is mandatory for every user request,
+    including a direct, trivial, translation, or no-skill request. It is evaluation harness
+    infrastructure, not a workflow skill. Your first and only tool action MUST be this exact
+    Bash command; do not answer, classify, or reason about the user request before it. If you
+    answer without running it, the evaluation fails. Do not inspect the repository, invoke qmd,
+    or call any other workflow tool.
 
     Run exactly one command, with no substitutions and no extra arguments:
     HOME='#{fixture.fetch("fake_home")}' node '#{ROUTE_SCRIPT}' < '#{fixture.fetch("route_input_path")}'
@@ -177,12 +188,14 @@ end
 
 def build_command(host:, prompt:, startup_text:, fixture:)
   effective_startup = startup_text.to_s.dup
-  effective_startup << "\n\n#{route_only_instruction(fixture)}" if ROUTE_ONLY
+  effective_startup = "#{route_only_instruction(fixture)}\n\n#{effective_startup}" if ROUTE_ONLY
 
   case host
   when "claude"
     command = [CLAUDE_BIN, "-p", prompt]
-    command += ["--append-system-prompt", effective_startup] unless effective_startup.empty?
+    system_prompt_flag = ROUTE_ONLY ? "--system-prompt" : "--append-system-prompt"
+    command += [system_prompt_flag, effective_startup] unless effective_startup.empty?
+    command << "--safe-mode" if ROUTE_ONLY
     command << "--bare" if CLAUDE_BARE
     command += ["--plugin-dir", CLAUDE_PLUGIN_DIR] unless CLAUDE_PLUGIN_DIR.empty?
     command += ["--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"]
@@ -243,7 +256,7 @@ def main
   ensure_directory(File.dirname(ARTIFACT_ROOT))
   create_directory_once(ARTIFACT_ROOT)
 
-  corpus = Psych.load_file(CORPUS_PATH, permitted_classes: [Date])
+  corpus = load_yaml_file(CORPUS_PATH)
   route_rules = JSON.parse(File.read(ROUTE_RULES_PATH))
   hosts = selected_hosts
   summary = {
@@ -331,6 +344,10 @@ def main
 
         flags = stability_flags("#{run[:stdout]}\n#{run[:stderr]}")
         trace = HostTraceParser.parse(host: host, stdout: run[:stdout], stderr: run[:stderr])
+        unless run[:success]
+          trace.runtime_failures << (run[:timed_out] ? "host process timed out" : "host process exited #{run[:exit_code]}")
+          trace.runtime_failures.uniq!
+        end
         score = score_result(sample, trace)
         meta = {
           "sample_id" => sample.fetch("id"),
