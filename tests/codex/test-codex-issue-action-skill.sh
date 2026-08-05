@@ -44,6 +44,14 @@ else
   exit 1
 fi
 
+if grep -q "Commit and push the infrastructure changes before asking the user to test" "$SKILL_DIR/SKILL.md" &&
+   grep -q "GitHub cannot trigger a workflow file that only exists locally" "$SKILL_DIR/SKILL.md"; then
+  echo "  [PASS] skill tells agents to commit and push infrastructure before testing"
+else
+  echo "  [FAIL] skill does not require committing and pushing infrastructure before testing"
+  exit 1
+fi
+
 if grep -q "ALLOWED_ACTORS" "$SKILL_DIR/templates/codex-issue.yml"; then
   echo "  [PASS] workflow includes actor allowlist"
 else

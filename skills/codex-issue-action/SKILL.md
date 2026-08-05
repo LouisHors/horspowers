@@ -83,8 +83,18 @@ Use templates from `templates/` instead of rewriting them from memory.
    - If using a non-default OpenAI-compatible endpoint, add repository secret `CODEX_RESPONSES_API_ENDPOINT` with the full Responses API URL, for example `https://example.com/v1/responses`.
    - Set the allowed GitHub usernames in the workflow.
    - Enable GitHub Actions to create pull requests if the repository requires that setting.
+
+7. Commit and push the infrastructure changes before asking the user to test:
+   - Stage `AGENTS.md`, `.codex/`, `.github/workflows/codex-issue.yml`, and any skill/test files changed in the setup.
+   - Commit with a message such as `feat(codex): add issue action workflow`.
+   - Push the branch that the repository uses for Actions, usually `main`.
+   - GitHub cannot trigger a workflow file that only exists locally.
+
+8. After the workflow file is on GitHub, guide the user through a smoke test:
    - Open a test issue.
    - Comment `/codex plan` first to verify the chain.
+   - Check the repository Actions tab for `Codex Issue Action`.
+   - Only test `/codex implement` after `/codex plan` succeeds.
 
 ## Command Semantics
 

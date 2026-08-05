@@ -90,6 +90,25 @@ node scripts/migrate-docs.js
 
 更多示例请查看各技能的 description。
 
+### Codex Issue Action 脚本
+
+仓库提供了 `.github/workflows/codex-issue.yml`，可以通过 GitHub Issue/PR 评论触发 Codex。
+
+使用方式：
+
+1. 在 GitHub 仓库 `Settings` → `Secrets and variables` → `Actions` 中添加 `OPENAI_API_KEY`。
+2. 如果使用非官方 OpenAI 兼容地址，再添加 `CODEX_RESPONSES_API_ENDPOINT`，值填写完整 Responses API 地址，例如 `https://example.com/v1/responses`。
+3. 在 workflow 里确认 `ALLOWED_ACTORS` 包含允许触发的 GitHub 用户名。
+4. 提交并推送 `.github/workflows/codex-issue.yml` 后，在 issue 或 PR 评论中使用：
+
+```text
+/codex plan
+/codex implement
+/codex fix-ci
+```
+
+建议先用 `/codex plan` 测试只读链路，确认 GitHub Actions 能正常触发后再使用写入命令。
+
 ### 安装与使用
 
 **前提条件**：Claude Code CLI (`claude` 命令)
