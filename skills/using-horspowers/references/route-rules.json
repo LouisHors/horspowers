@@ -44,7 +44,7 @@
       "route": "tdd",
       "explicit_patterns": ["horspowers:test-driven-development", "使用 test-driven-development", "使用 tdd"],
       "strong_groups": [
-        { "id": "change_signal", "any_patterns": ["功能", "bugfix", "修复", "fix", "bug"] },
+        { "id": "change_signal", "any_patterns": ["功能", "bugfix", "修复", "改成", "fix", "bug"] },
         { "id": "test_first", "any_patterns": ["失败测试", "复现测试", "failing test", "acceptance test first", "先写测试"] }
       ],
       "weak_patterns": ["测试驱动", "red green", "测试先行"]
@@ -53,7 +53,7 @@
       "route": "planning",
       "explicit_patterns": ["horspowers:writing-plans", "使用 writing-plans", "实施计划", "落地计划", "implementation plan", "execution plan", "分步骤.*(计划|落地)", "(拆成|整理成).*(步骤|阶段).*(先别|不要).*(做|开始|实现)"],
       "strong_groups": [
-        { "id": "direction_settled", "any_patterns": ["已批准", "已确认", "approved", "agreed", "大方向差不多", "设计我认可了"] },
+        { "id": "direction_settled", "any_patterns": ["已批准", "已经批准", "已确认", "approved", "agreed", "大方向差不多", "设计我认可了"] },
         { "id": "steps_requested", "any_patterns": ["实施步骤", "拆步骤", "implementation plan", "break into steps", "下一步", "推进"] }
       ],
       "weak_patterns": ["计划", "步骤", "阶段", "plan"]
