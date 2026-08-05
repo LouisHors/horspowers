@@ -1,5 +1,20 @@
 # Horspowers Release Notes
 
+## Unreleased (2026-08-05)
+
+### New Features
+
+**确定性快慢工作流路由**
+- `using-horspowers` 现在通过 stdin-only 本地路由器返回唯一高置信度 workflow、`direct` 或 `uncertain`，避免在明确请求上重复展开通用流程。
+- 路由器将安全项目资格检查、只读 Plan 与幂等 Apply 合并为一个入口；Codex 的 AGENTS 托管区块、团队配置和通用 docs 均不覆盖已有用户内容。
+- brainstorming 仅在需要探索时并行收集 Wiki、仓库、Git 和已知入口背景，并在 `rg` 或 qmd 缺失时有边界地回退。
+
+### Compatibility and Rollback
+
+- Codex 和 Claude Code 继续使用各自原生入口；未知宿主无法安全解析路径时保持 LLM 回退且零写入。
+- 回滚可撤销路由 / hook 集成提交；已有 Codex AGENTS 托管区块采用版本 marker 与备份，不需要删除用户内容。
+- 非删除式双宿主 route-only 验收已记录于 `tests/skill-trigger/runs/2026-08-05-fast-slow-routing-v1.yaml`。含清理行为的 legacy suites 未获授权，未执行也未标记为通过。
+
 ## v4.5.1 (2026-06-18)
 
 ### Bug Fixes

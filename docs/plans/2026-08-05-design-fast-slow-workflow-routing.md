@@ -4,7 +4,7 @@
 
 - 创建时间：2026-08-05
 - 设计者：Codex 与项目所有者
-- 状态：已批准，待实施
+- 状态：已实施（2026-08-05；验收记录见 `tests/skill-trigger/runs/2026-08-05-fast-slow-routing-v1.yaml`）
 - 当前代码基线：`main@a18dc42`
 - 计划文档：[`2026-08-05-fast-slow-workflow-routing-implementation.md`](2026-08-05-fast-slow-workflow-routing-implementation.md)
 
@@ -461,6 +461,14 @@ Skill 合成结果时必须区分：
 - 自动初始化 created / skipped / failed 分布。
 
 若 `direct` over-trigger 超过 5%，优先收窄 allowlist；若 `uncertain` 过高，优先增加不冲突的强组合规则，不通过扩大弱关键词范围解决。
+
+## 实施验收（2026-08-05）
+
+- router version 与 route-rule version 均为 1；`node --test tests/workflow-router/*.test.mjs` 通过 38 项，`node --test tests/context-collector/*.test.mjs` 通过 11 项。
+- `node tests/skill-trigger/scripts/evaluate_router.mjs` 得到 48 条正样本 exact、24 条负样本、0 over-trigger；100 次独立进程基准的 P50/P95/max 为 50.119/57.375/59.544ms，P95 低于 150ms 目标。
+- 最终非删除式 route-only 基线中，Codex 与 Claude Code 均完成 72/72：48/48 正样本 exact、24/24 负样本无 over-trigger；每条 trace 恰好一次 router，零额外工具、零 runtime failure 与零 integration failure。Codex 72 条实际调用均使用 fixture 内短入口。
+- legacy compatibility、Claude smoke / full、docs-system integration 与完整 workflow integration 含清理行为，因未获用户授权而未运行；状态严格记录为 `not_run_user_did_not_authorize_cleanup`，不将其表述为完整回归通过。
+- 完整 artifact、宿主版本、启动 profile、性能环境和命令结果见 [`tests/skill-trigger/runs/2026-08-05-fast-slow-routing-v1.yaml`](../../tests/skill-trigger/runs/2026-08-05-fast-slow-routing-v1.yaml)。
 
 ## 相关文档
 

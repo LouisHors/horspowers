@@ -1438,3 +1438,10 @@ git commit -m "docs: record fast slow routing verification"
 
 1. `horspowers:subagent-driven-development`：当前会话按 Task 连续推进并逐任务审查。
 2. `horspowers:executing-plans`：独立会话按批次执行，在 Task 2、5、8、9 后设置检查点。
+
+## 实际验收记录（2026-08-05）
+
+- Task 1–8 的实现以独立提交落地；Task 9 最终测试提交为 `b79be82aeb12a26ce455667da3b37b1973e1f911`，run record 为 [`2026-08-05-fast-slow-routing-v1.yaml`](../../tests/skill-trigger/runs/2026-08-05-fast-slow-routing-v1.yaml)。
+- 已运行：`node --test tests/workflow-router/*.test.mjs`（38 passed）、`node --test tests/context-collector/*.test.mjs`（11 passed）、`node tests/skill-trigger/scripts/evaluate_router.mjs`（48 exact、24 negative、0 over-trigger）、`node tests/workflow-router/benchmark.mjs`（100 次、P95 57.375ms）、`ruby tests/skill-trigger/test_host_trace_parser.rb`（8 passed）及 `ruby tests/skill-trigger/test_run_full_baseline.rb`（8 passed）。
+- 非删除式 opaque route-only baseline 已在 Codex 与 Claude 执行：每宿主 72/72；48/48 正样本 exact、24/24 负样本无 over-trigger；逐样本 router_calls=1、extra tools=0、runtime failures=0、integration failures=0。Codex 最终 artifact 使用 fixture-local router 命令，72 条均未回退到长绝对路径转写。
+- `git diff --check` 在写入本记录前通过。`tests/codex/run-tests.sh`、Claude smoke / full、docs-system integration 及完整 workflow integration 未运行，因为它们含清理行为且用户未授权；run record 使用枚举值 `not_run_user_did_not_authorize_cleanup`，不宣称“完整回归全部通过”。
