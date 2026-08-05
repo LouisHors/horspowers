@@ -14,3 +14,4 @@ docs/unified-document-system-guide.md
 # macOS
 .DS_Store
 .DS_Store?
+.worktrees/
