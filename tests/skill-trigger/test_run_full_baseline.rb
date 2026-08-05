@@ -47,7 +47,7 @@ class RunFullBaselineTest < Minitest::Test
     )
     effective_prompt = command.last
 
-    assert_operator effective_prompt.index("User request:"), :<, effective_prompt.index("ROUTE-ONLY EVALUATION")
+    assert_operator effective_prompt.index("Route the opaque user request"), :<, effective_prompt.index("ROUTE-ONLY EVALUATION")
     assert_includes effective_prompt, "final response MUST be exactly `Route: <route>`"
     assert_equal ["-C", "/fixture/project"], command.each_cons(2).find { |pair| pair == ["-C", "/fixture/project"] }
   end
@@ -58,5 +58,21 @@ class RunFullBaselineTest < Minitest::Test
     assert_includes instructions, "ROUTE-ONLY EVALUATION"
     assert_includes instructions, "mandatory for every user request"
     assert_includes instructions, "final response MUST be exactly `Route: <route>`"
+  end
+
+  def test_uses_an_opaque_route_only_host_prompt_for_both_hosts
+    ["claude", "codex"].each do |host|
+      command = build_command(
+        host: host,
+        prompt: "请简短解释 router 这个术语。",
+        startup_text: "baseline profile",
+        fixture: fixture,
+        route_only: true
+      )
+      host_prompt = host == "claude" ? command.fetch(command.index("-p") + 1) : command.last
+
+      assert_includes host_prompt, "opaque user request"
+      refute_includes host_prompt, "请简短解释 router 这个术语。"
+    end
   end
 end

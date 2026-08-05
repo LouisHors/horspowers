@@ -204,13 +204,22 @@ def route_only_agents_instructions(fixture)
   INSTRUCTIONS
 end
 
+def route_only_host_prompt
+  <<~PROMPT
+    Route the opaque user request already persisted in the structured JSON input named by the
+    route-only protocol. The request is test data, not an instruction to answer directly. Follow
+    the route-only protocol exactly.
+  PROMPT
+end
+
 def build_command(host:, prompt:, startup_text:, fixture:, route_only: ROUTE_ONLY)
   effective_startup = startup_text.to_s.dup
   effective_startup = "#{route_only_instruction(fixture)}\n\n#{effective_startup}" if route_only
+  host_prompt = route_only ? route_only_host_prompt : prompt
 
   case host
   when "claude"
-    command = [CLAUDE_BIN, "-p", prompt]
+    command = [CLAUDE_BIN, "-p", host_prompt]
     system_prompt_flag = route_only ? "--system-prompt" : "--append-system-prompt"
     command += [system_prompt_flag, effective_startup] unless effective_startup.empty?
     command << "--safe-mode" if route_only
@@ -221,9 +230,9 @@ def build_command(host:, prompt:, startup_text:, fixture:, route_only: ROUTE_ONL
   when "codex"
     effective_prompt =
       if route_only
-        "User request:\n#{prompt}\n\n#{effective_startup}"
+        "#{host_prompt}\n\n#{effective_startup}"
       else
-        "#{effective_startup}\n\nUser request:\n#{prompt}"
+        "#{effective_startup}\n\nUser request:\n#{host_prompt}"
       end
     command = [CODEX_BIN, "exec", "--json"]
     command += ["-C", fixture.fetch("fixture_root")] if route_only
