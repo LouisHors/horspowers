@@ -203,7 +203,12 @@ def build_command(host:, prompt:, startup_text:, fixture:, route_only: ROUTE_ONL
     command += ["--plugin-dir", CLAUDE_PLUGIN_DIR] unless CLAUDE_PLUGIN_DIR.empty?
     command += ["--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"]
   when "codex"
-    effective_prompt = "#{effective_startup}\n\nUser request:\n#{prompt}"
+    effective_prompt =
+      if route_only
+        "User request:\n#{prompt}\n\n#{effective_startup}"
+      else
+        "#{effective_startup}\n\nUser request:\n#{prompt}"
+      end
     command = [CODEX_BIN, "exec", "--json", effective_prompt]
   else
     raise "unsupported host: #{host}"

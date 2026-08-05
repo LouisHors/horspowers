@@ -35,4 +35,18 @@ class RunFullBaselineTest < Minitest::Test
     assert_includes system_prompt, "final response MUST be exactly `Target skill: <target_skill>`"
     assert_match(/Do not invoke a Skill or any\s+other tool after the router command/, system_prompt)
   end
+
+  def test_builds_codex_route_only_prompt_with_terminal_protocol_after_user_request
+    command = build_command(
+      host: "codex",
+      prompt: "请简短解释 router 这个术语。",
+      startup_text: "baseline profile",
+      fixture: fixture,
+      route_only: true
+    )
+    effective_prompt = command.last
+
+    assert_operator effective_prompt.index("User request:"), :<, effective_prompt.index("ROUTE-ONLY EVALUATION")
+    assert_includes effective_prompt, "final response MUST be exactly `Route: <route>`"
+  end
 end
