@@ -180,22 +180,25 @@ def route_only_instruction(fixture)
     Run exactly one command, with no substitutions and no extra arguments:
     HOME='#{fixture.fetch("fake_home")}' node '#{ROUTE_SCRIPT}' < '#{fixture.fetch("route_input_path")}'
 
-    Read its one-line JSON result. If `routing.target_skill` is non-null, announce and load only
-    that unique target skill, then stop. If the route is `direct` or `uncertain`, stop after
-    stating that route. Do not perform the original user task.
+    Read its one-line JSON result, then stop immediately. These route-only obligations override
+    normal workflow execution in the baseline profile. If `routing.target_skill` is non-null,
+    final response MUST be exactly `Target skill: <target_skill>`. If the route is `direct` or
+    `uncertain`, final response MUST be exactly `Route: <route>`. Do not invoke a Skill or any
+    other tool after the router command. Do not perform or explain the original user task.
   INSTRUCTION
 end
 
-def build_command(host:, prompt:, startup_text:, fixture:)
+def build_command(host:, prompt:, startup_text:, fixture:, route_only: ROUTE_ONLY)
   effective_startup = startup_text.to_s.dup
-  effective_startup = "#{route_only_instruction(fixture)}\n\n#{effective_startup}" if ROUTE_ONLY
+  effective_startup = "#{route_only_instruction(fixture)}\n\n#{effective_startup}" if route_only
 
   case host
   when "claude"
     command = [CLAUDE_BIN, "-p", prompt]
-    system_prompt_flag = ROUTE_ONLY ? "--system-prompt" : "--append-system-prompt"
+    system_prompt_flag = route_only ? "--system-prompt" : "--append-system-prompt"
     command += [system_prompt_flag, effective_startup] unless effective_startup.empty?
-    command << "--safe-mode" if ROUTE_ONLY
+    command << "--safe-mode" if route_only
+    command += ["--tools", "Bash"] if route_only
     command << "--bare" if CLAUDE_BARE
     command += ["--plugin-dir", CLAUDE_PLUGIN_DIR] unless CLAUDE_PLUGIN_DIR.empty?
     command += ["--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"]
