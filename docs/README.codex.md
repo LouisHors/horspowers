@@ -56,6 +56,14 @@ Primary path:
 Legacy compatibility files still exist under `.codex/`, but they are no longer
 the recommended entrypoint.
 
+After native discovery first loads `horspowers:using-horspowers`, its local
+router may idempotently add a versioned managed block to
+`~/.codex/AGENTS.md`. This is not a manual bootstrap requirement: it preserves
+all text outside the managed markers and only updates the marker content after
+creating a backup. If markers are duplicated, incomplete, or nested, repair
+them manually; Horspowers intentionally refuses to overwrite ambiguous user
+content.
+
 ## Usage
 
 Once installed, Codex can discover and use the skills directly. Typical usage
@@ -152,8 +160,10 @@ Restart Codex if the session was already open when the update was pulled.
 
 ### Old bootstrap and native discovery conflict
 
-If Codex is still following an old `AGENTS.md` bootstrap path, remove or disable
-that block after native discovery is working.
+Do not copy the old full bootstrap into `AGENTS.md`. Native discovery is enough;
+the router maintains only its short versioned managed block. If a managed marker
+is damaged, repair the marker structure manually rather than replacing content
+outside it.
 
 ### Multi-agent skills do not dispatch
 

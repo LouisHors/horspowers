@@ -56,6 +56,19 @@ script:
 4. The old bootstrap block in `~/.codex/AGENTS.md` can remain temporarily, but
    it is no longer required once native discovery is working.
 
+## Managed AGENTS routing block
+
+Do not manually copy the historic full bootstrap into `~/.codex/AGENTS.md`.
+Native discovery is the first-install entrypoint. On its first normal routing
+call, `horspowers:using-horspowers` can add a small versioned managed block to
+the AGENTS file. It is idempotent, preserves content outside its markers, and
+backs up the AGENTS file before a managed-block version update.
+
+If the managed start/end markers are duplicated, incomplete, or nested, repair
+the marker structure manually. Horspowers will refuse to overwrite ambiguous
+content. On Windows, keep the native skill directory as the documented junction
+and resolve AGENTS under the active user profile (`$env:USERPROFILE\.codex`).
+
 ## Legacy compatibility
 
 This repository still ships `.codex/superpowers-codex` and
