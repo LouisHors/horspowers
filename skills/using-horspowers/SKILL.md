@@ -1,307 +1,60 @@
 ---
 name: using-horspowers
-description: Use when starting any conversation - establishes how to find and use skills, requiring Skill tool invocation before ANY response including clarifying questions. 中文触发场景：每次会话开始时自动注入，建立如何查找和使用技能的基础规则。
+description: Use at the entry to a substantive Horspowers workflow so the local router can select one safe target workflow. 中文触发场景：实质性开发、调试、计划、评审、文档或历史上下文任务的统一入口。
 ---
 
-<EXTREMELY-IMPORTANT>
-If you think there is even a 1% chance a skill might apply to what you are doing, you ABSOLUTELY MUST invoke the skill.
+# Horspowers 工作流路由入口
 
-IF A SKILL APPLIES TO YOUR TASK, YOU DO NOT HAVE A CHOICE. YOU MUST USE IT.
+## 目的
 
-This is not negotiable. This is not optional. You cannot rationalize your way out of it.
-</EXTREMELY-IMPORTANT>
+此 Skill 是短入口，不自行展开完整技能树、配置问答或背景检索。先安全调用本地路由器；它在同一进程内完成只读 Plan、确定性路由和必要的幂等 Apply。
 
-## How to Access Skills
+只在宿主能从 native skill discovery 确定脚本位置时调用。不要按仓库名扫描用户目录，也不要猜测未知宿主的路径。
 
-**In Claude Code:** Use the `Skill` tool. When you invoke a skill, its content is loaded and presented to you—follow it directly. Never use the Read tool on skill files.
+## 安全输入契约
 
-**In Codex:** Skills load natively when Horspowers is exposed under `~/.agents/skills/horspowers`. Do not use the legacy bootstrap CLI as the primary path. When a skill references Claude Code-specific tools, read `references/codex-tools.md` and apply those mappings.
+路由器只接收一份 JSON stdin：
 
-**In other environments:** Check your platform's documentation for how skills are loaded.
-
-# Using Horspowers Skills
-
-## About Horspowers
-
-**Horspowers** is a Chinese-enhanced fork of [obra/superpowers](https://github.com/obra/superpowers), a composable skills library for Claude Code. It provides complete development workflows with full Chinese language support.
-
-This skill was originally called `using-superpowers` in the upstream project. Legacy references may still use that name, but the canonical Horspowers skill name is `horspowers:using-horspowers`.
-
-## The Rule
-
-**Invoke relevant or requested skills BEFORE any response or action.** Even a 1% chance a skill might apply means that you should invoke the skill to check. If an invoked skill turns out to be wrong for the situation, you don't need to use it.
-
-When a skill references host-specific tool names, treat them as capability names rather than literal commands:
-
-- Skill discovery / loading
-- Planning or todo tracking
-- Asking the user for a concrete choice
-- Spawning helper agents or subagents
-- Reading, editing, and running commands
-
-Use the closest native capability in the current host. In Codex, read `references/codex-tools.md` for the expected mapping.
-
-```dot
-digraph skill_flow {
-    "User message received" [shape=doublecircle];
-    "Might any skill apply?" [shape=diamond];
-    "Invoke host skill loader" [shape=box];
-    "Announce: 'Using [skill] to [purpose]'" [shape=box];
-    "Has checklist?" [shape=diamond];
-    "Create host plan/todo item per checklist item" [shape=box];
-    "Follow skill exactly" [shape=box];
-    "Respond (including clarifications)" [shape=doublecircle];
-
-    "User message received" -> "Might any skill apply?";
-    "Might any skill apply?" -> "Invoke host skill loader" [label="yes, even 1%"];
-    "Might any skill apply?" -> "Respond (including clarifications)" [label="definitely not"];
-    "Invoke host skill loader" -> "Announce: 'Using [skill] to [purpose]'";
-    "Announce: 'Using [skill] to [purpose]'" -> "Has checklist?";
-    "Has checklist?" -> "Create host plan/todo item per checklist item" [label="yes"];
-    "Has checklist?" -> "Follow skill exactly" [label="no"];
-    "Create host plan/todo item per checklist item" -> "Follow skill exactly";
+```json
+{
+  "schema_version": 1,
+  "host": "codex",
+  "cwd": "/absolute/project/path",
+  "message": "当前用户原文",
+  "active_route": null
 }
 ```
 
-## Red Flags
+- 必须由宿主的结构化输入或安全环境变量生成 JSON。
+- 不得把用户原文拼接到 shell command、argv 或代码字符串。
+- 执行前验证脚本是普通可读文件并解析真实路径；详细路径见 `references/host-path-resolution.md`。
 
-These thoughts mean STOP—you're rationalizing:
+Codex macOS/Linux 的安全管道示例：
 
-| Thought | Reality |
-|---------|---------|
-| "This is just a simple question" | Questions are tasks. Check for skills. |
-| "I need more context first" | Skill check comes BEFORE clarifying questions. |
-| "Let me explore the codebase first" | Skills tell you HOW to explore. Check first. |
-| "I can check git/files quickly" | Files lack conversation context. Check for skills. |
-| "Let me gather information first" | Skills tell you HOW to gather information. |
-| "This doesn't need a formal skill" | If a skill exists, use it. |
-| "I remember this skill" | Skills evolve. Read current version. |
-| "This doesn't count as a task" | Action = task. Check for skills. |
-| "The skill is overkill" | Simple things become complex. Use it. |
-| "I'll just do this one thing first" | Check BEFORE doing anything. |
-| "This feels productive" | Undisciplined action wastes time. Skills prevent this. |
-| "I know what that means" | Knowing the concept ≠ using the skill. Invoke it. |
-
-## Skill Priority
-
-When multiple skills could apply, use this order:
-
-1. **Process skills first** (brainstorming, debugging) - these determine HOW to approach the task
-2. **Implementation skills second** (frontend-design, mcp-builder) - these guide execution
-
-"Let's build X" → brainstorming first, then implementation skills.
-"Fix this bug" → debugging first, then domain-specific skills.
-
-## Skill Types
-
-**Rigid** (TDD, debugging): Follow exactly. Don't adapt away discipline.
-
-**Flexible** (patterns): Adapt principles to context.
-
-The skill itself tells you which.
-
-## User Instructions
-
-Instructions say WHAT, not HOW. "Add X" or "Fix Y" doesn't mean skip workflows.
-
-## Codex Notes
-
-When running inside Codex:
-
-- Treat native skill discovery as the source of truth
-- Use `references/codex-tools.md` whenever a skill mentions Claude Code tools
-- Prefer `spawn_agent` / `wait_agent` / `close_agent` for subagent workflows
-- Only fall back to `.codex/superpowers-codex` when maintaining legacy installs
-
-## Configuration System (Personal/Team Modes)
-
-**Check for configuration marker on session start:**
-
-When this skill is injected via session start hook, check for configuration status markers:
-
-**If `<config-needs-init>true</config-needs-init>`:**
-- On your FIRST response to the user, you MUST guide them through initial configuration
-- Use the host's user-input or question capability to ask about their development preferences:
-
-```
-欢迎使用 Horspowers！检测到这是首次使用，需要配置开发模式。
-
-**请选择你的开发模式：**
-
-1. **个人开发者** - 单人开发，使用简化的工作流程：
-   - 使用普通分支而非 worktree
-   - 本地合并而非创建 PR
-   - 可选的测试（可以写完代码再测试）
-
-2. **团队协作** - 团队开发，使用完整的工程化流程：
-   - 使用 worktree 隔离环境
-   - 创建 PR 进行代码审查
-   - 严格的 TDD 流程
-
-请选择 1 或 2：
-```
-
-- After user selects, use the repo's config helper to create the config file:
-```javascript
-const { initializeConfig } = require('./lib/config-manager.js');
-const mode = userSelection === 1 ? 'personal' : 'team';
-const result = initializeConfig(process.cwd(), mode);
-```
-
-**After config is created, check for docs initialization:**
-```
-✅ 配置文件已创建！
-
-Horspowers 默认启用文档系统功能，可以帮助你追踪任务和进度。
-
-是否立即初始化文档系统（创建 docs/ 目录结构）？
-```
-
-- If user confirms "yes":
-  ```bash
-  # Claude Code plugin environment
-  node -e "
-  const { UnifiedDocsManager } = require('\${CLAUDE_PLUGIN_ROOT}/lib/docs-core.js');
-  const manager = new UnifiedDocsManager(process.cwd());
-  const result = manager.init();
-  console.log(result.message);
-  "
-  ```
-- In hosts without `CLAUDE_PLUGIN_ROOT`, resolve the Horspowers repo root first and invoke the same helper from that location.
-- If user says "no":
-  ```
-  好的，你可以稍后使用 `/docs init` 命令或运行 Skill: `horspowers:document-management` 来初始化文档系统。
-  ```
-
-**If `<config-needs-migration>true</config-needs-migration>`:**
-- On your FIRST response, inform user about migration:
-```
-⚠️ **检测到旧版配置文件**: 发现 `.superpowers-config.yaml` 需要迁移到新版格式。
-
-新版配置文件 `.horspowers-config.yaml` 将：
-- 更新配置版本到 {{CONFIG_VERSION}}
-- 保留您现有的配置设置
-- 自动添加新的可选字段（如 documentation.enabled）
-
-是否现在执行迁移？
-```
-
-- If user confirms, use: `migrateOldConfig(oldPath, projectDir)`
-- Migration path provided in `<config-old-path>` marker
-
-**After migration, check for docs initialization (same prompt as above):**
-- If config now has `documentation.enabled: true` but docs/ doesn't exist, prompt to initialize
-
-**If `<config-needs-update>true</config-needs-update>`:**
-- On your FIRST response, inform user about update:
-```
-⚠️ **配置文件需要更新**: {{<config-update-reason>}}
-
-是否现在更新配置文件？
-```
-
-- If user confirms, use: `updateConfig(projectDir, currentConfig)`
-
-**After update, check for docs initialization:**
-- If config now has `documentation.enabled: true` but docs/ doesn't exist, prompt to initialize
-
-**If `<config-invalid>true</config-invalid>`:**
-- On your FIRST response, inform user about validation errors:
-```
-⚠️ **配置文件无效**: 配置文件存在但验证失败。
-
-错误信息：{{errors}}
-
-建议修复配置文件或删除后重新初始化。
-```
-
-**If `<config-valid>true</config-valid>`:**
-- Configuration is valid and up to date - read `<config-detected>` marker for current settings
-- Store these settings in memory for use by other skills
-- Don't mention configuration unless user asks or a skill needs to make a decision
-
-## Document System Initialization Check
-
-**IMPORTANT:** After confirming config is valid, ALWAYS check document system status:
-
-**Check if docs/ directory exists:**
 ```bash
-ls docs/ 2>/dev/null || echo "Not initialized"
+printf '%s' "$HORSPOWERS_ROUTER_INPUT" | \
+  node "$HOME/.agents/skills/horspowers/using-horspowers/scripts/route-request.mjs"
 ```
 
-**If `documentation.enabled: true` but docs/ directory does NOT exist:**
-```
-📄 **文档系统已启用但未初始化**
+Claude Code 与 Windows PowerShell 示例见 `references/host-path-resolution.md`。脚本只能从 stdin 获取 JSON，argv 必须为空。
 
-检测到你在配置文件中启用了文档系统，但 docs/ 目录尚未创建。
+## 处理结果
 
-是否现在初始化文档系统？这将创建以下目录结构：
-- docs/plans/      - 静态文档（设计、计划）
-- docs/active/     - 活跃状态追踪文档
-- docs/archive/    - 已归档文档
-- docs/context/    - 上下文文档
-- docs/.docs-metadata/ - 元数据和会话状态
-```
+解析 stdout 的唯一 JSON 对象后严格按 `routing` 处理：
 
-- If user confirms "yes":
-  ```bash
-  # Claude Code plugin environment
-  node -e "
-  const { UnifiedDocsManager } = require('\${CLAUDE_PLUGIN_ROOT}/lib/docs-core.js');
-  const manager = new UnifiedDocsManager(process.cwd());
-  const result = manager.init();
-  console.log(result.message);
-  "
-  ```
-- In hosts without `CLAUDE_PLUGIN_ROOT`, resolve the Horspowers repo root first and invoke the same helper from that location.
-- If user says "no":
-  ```
-  好的，文档系统暂不初始化。
+1. `target_skill` 非空：立即加载这个唯一 Skill，不再进行泛化 Skill 判断。
+2. `direct`：直接处理请求，不调用 qmd 或流程 Skill。
+3. `uncertain`：只在 `candidates` 中比较；仍无法消歧时只问一个关键问题。
+4. CLI non-zero：不假设配置或初始化已经成功，回退到 LLM 的安全路由判断且不执行额外写入。
 
-  你可以稍后使用以下方式手动初始化：
-  - 运行 `/docs init` 命令
-  - 或直接调用 Skill: `horspowers:document-management`
-  ```
+`mutations` 只报告 AGENTS 托管区块、项目配置和通用 docs 的状态。路由脚本在任何 Apply 前完成规则评分；Plan 失败或规则无效时返回 `uncertain` 且 `mutations` 为空。
 
-**If `documentation.enabled` is NOT true or does NOT exist:**
-```
-📄 **文档系统集成提示**
+## 项目配置与文档
 
-Horspowers 提供文档系统功能，可以帮助你：
-- 追踪任务、Bug 和设计文档
-- 记录会话状态和进度
-- 自动归档完成的文档
+缺失配置只会在安全的具体项目根由路由器静默创建团队配置和通用 docs。已有配置、过期配置、旧配置或无效配置从不被静默覆盖；读取 `references/config-bootstrap.md` 后走明确的用户确认流程。
 
-是否启用文档系统？
-```
+托管 AGENTS marker 损坏、重复或嵌套时，路由器拒绝写入并返回可操作错误。不得手工覆盖 marker 外的用户内容。
 
-- If user confirms "yes":
-  1. Use Node.js to update config:
-  ```javascript
-  const { readConfig, updateConfig } = require('./lib/config-manager.js');
-  const config = readConfig(process.cwd());
-  config.documentation = { enabled: true };
-  updateConfig(process.cwd(), config);
-  ```
-  2. Then initialize the docs directory (as shown above)
-- If user says "no":
-  ```
-  好的，文档系统暂不启用。
+## 宿主工具映射
 
-  你可以随时在 .horspowers-config.yaml 中添加以下配置来启用：
-  ```yaml
-  documentation:
-    enabled: true
-  ```
-
-  或使用 `/docs init` 命令时再询问是否启用配置。
-  ```
-
-**If `documentation.enabled: true` AND docs/ directory exists:**
-- Document system is ready - no action needed
-- Store in memory: `docsSystemReady: true`
-
-**Config usage by other skills:**
-- Skills should read the configuration from session context
-- At decision points, show "根据当前配置（<development_mode>），建议：..." with confirmation
-- Always allow user to override the suggestion
+Codex 使用 native skill discovery、`update_plan` 和本机工具。Claude 专用工具名称的映射在 `references/codex-tools.md`；路径解析在 `references/host-path-resolution.md`。

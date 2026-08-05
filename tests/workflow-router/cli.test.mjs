@@ -1,20 +1,36 @@
-import test from 'node:test';
+import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
+import { mkdir } from 'node:fs/promises';
 import { once } from 'node:events';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
+import { execFile } from 'node:child_process';
+import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const scriptPath = path.join(repoRoot, 'skills/using-horspowers/scripts/route-request.mjs');
 const shellMarker = '/private/tmp/horspowers-route-request-shell-marker';
+const artifactsRoot = path.join(repoRoot, 'tests/.artifacts/workflow-router');
+const run = promisify(execFile);
+let fixtureRoot;
+let fakeHome;
+
+before(async () => {
+  const runId = `${Date.now()}-${process.pid}-cli`;
+  fixtureRoot = path.join(artifactsRoot, runId, 'project');
+  fakeHome = path.join(artifactsRoot, runId, 'home');
+  await mkdir(fixtureRoot, { recursive: true });
+  await mkdir(fakeHome, { recursive: true });
+  await run('git', ['init', '--quiet'], { cwd: fixtureRoot });
+});
 
 function validInput(overrides = {}) {
   return {
     schema_version: 1,
     host: 'codex',
-    cwd: repoRoot,
+    cwd: fixtureRoot,
     message: '把这段文字翻译成英文',
     active_route: null,
     ...overrides
@@ -24,7 +40,7 @@ function validInput(overrides = {}) {
 async function runCli({ input = '', args = [], env = {} } = {}) {
   const child = spawn(process.execPath, [scriptPath, ...args], {
     cwd: repoRoot,
-    env: { ...process.env, ...env },
+    env: { ...process.env, HOME: fakeHome, ...env },
     shell: false,
     stdio: ['pipe', 'pipe', 'pipe']
   });
