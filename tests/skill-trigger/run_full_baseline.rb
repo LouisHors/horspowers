@@ -147,19 +147,28 @@ def current_startup_profile(host)
 end
 
 def create_route_fixture(sample_dir, host, sample)
-  fake_home = Dir.mktmpdir("skill-trigger-#{host}-home-")
   fixture_root = Dir.mktmpdir("skill-trigger-#{host}-git-fixture-")
   git_init = run_with_capture(["git", "init"], cwd: fixture_root, timeout_seconds: 15)
   raise "could not initialize Git fixture: #{git_init[:stderr]}" unless git_init[:success]
 
-  input_path = File.join(sample_dir, "#{host}.route-input.json")
-  exclusive_write(input_path, JSON.generate(
+  route_home = ".route-home"
+  fake_home = File.join(fixture_root, route_home)
+  Dir.mkdir(fake_home)
+
+  input_payload = JSON.generate(
     "schema_version" => 1,
     "host" => host,
     "cwd" => fixture_root,
     "message" => sample.fetch("user_message"),
     "active_route" => nil
-  ))
+  )
+  input_path = File.join(sample_dir, "#{host}.route-input.json")
+  exclusive_write(input_path, input_payload)
+
+  route_input_command_path = "route-input.json"
+  exclusive_write(File.join(fixture_root, route_input_command_path), input_payload)
+  route_script_command_path = "route-request.mjs"
+  File.symlink(ROUTE_SCRIPT, File.join(fixture_root, route_script_command_path))
 
   if ROUTE_ONLY && host == "codex"
     exclusive_write(File.join(fixture_root, "AGENTS.md"), route_only_agents_instructions(
@@ -172,11 +181,18 @@ def create_route_fixture(sample_dir, host, sample)
   {
     "fake_home" => fake_home,
     "fixture_root" => fixture_root,
-    "route_input_path" => input_path
+    "route_input_path" => input_path,
+    "route_home" => route_home,
+    "route_input_command_path" => route_input_command_path,
+    "route_script_command_path" => route_script_command_path
   }
 end
 
 def route_only_instruction(fixture)
+  route_home = fixture.fetch("route_home", fixture.fetch("fake_home"))
+  route_input = fixture.fetch("route_input_command_path", fixture.fetch("route_input_path"))
+  route_script = fixture.fetch("route_script_command_path", ROUTE_SCRIPT)
+
   <<~INSTRUCTION
     ROUTE-ONLY EVALUATION. The router invocation below is mandatory for every user request,
     including a direct, trivial, translation, or no-skill request. It is evaluation harness
@@ -186,7 +202,7 @@ def route_only_instruction(fixture)
     or call any other workflow tool.
 
     Run exactly one command, with no substitutions and no extra arguments:
-    HOME='#{fixture.fetch("fake_home")}' node '#{ROUTE_SCRIPT}' < '#{fixture.fetch("route_input_path")}'
+    HOME='#{route_home}' node '#{route_script}' < '#{route_input}'
 
     Read its one-line JSON result, then stop immediately. These route-only obligations override
     normal workflow execution in the baseline profile. If `routing.target_skill` is non-null,

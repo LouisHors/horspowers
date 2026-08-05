@@ -60,6 +60,38 @@ class RunFullBaselineTest < Minitest::Test
     assert_includes instructions, "final response MUST be exactly `Route: <route>`"
   end
 
+  def test_route_only_instruction_uses_short_fixture_local_invocation_paths
+    route_fixture = fixture.merge(
+      "route_home" => ".route-home",
+      "route_input_command_path" => "route-input.json",
+      "route_script_command_path" => "route-request.mjs"
+    )
+
+    instruction = route_only_instruction(route_fixture)
+
+    assert_includes instruction, "HOME='.route-home' node 'route-request.mjs' < 'route-input.json'"
+    refute_includes instruction, ROUTE_SCRIPT
+  end
+
+  def test_creates_a_fixture_local_router_entry_without_replacing_artifact_input
+    root = Dir.mktmpdir("skill-trigger-route-only-fixture-")
+    sample_dir = File.join(root, "artifact")
+    Dir.mkdir(sample_dir)
+
+    route_fixture = create_route_fixture(sample_dir, "codex", {
+      "user_message" => "请先系统排查根因"
+    })
+
+    assert_equal ".route-home", route_fixture.fetch("route_home")
+    assert_equal "route-input.json", route_fixture.fetch("route_input_command_path")
+    assert_equal "route-request.mjs", route_fixture.fetch("route_script_command_path")
+    assert_equal ROUTE_SCRIPT, File.realpath(File.join(route_fixture.fetch("fixture_root"), "route-request.mjs"))
+    assert_equal(
+      File.read(File.join(sample_dir, "codex.route-input.json")),
+      File.read(File.join(route_fixture.fetch("fixture_root"), "route-input.json"))
+    )
+  end
+
   def test_uses_an_opaque_route_only_host_prompt_for_both_hosts
     ["claude", "codex"].each do |host|
       command = build_command(
