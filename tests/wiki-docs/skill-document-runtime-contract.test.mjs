@@ -143,6 +143,7 @@ function isNodeFsMutationMethod(method) {
 
 const identifierPattern = String.raw`[A-Za-z_$][\w$]*`;
 const nodeFsModuleSpecifierPattern = String.raw`(?:node:)?fs(?:/promises)?`;
+const callPropertyPattern = String.raw`(?:(?:\.|\?\.)\s*call|(?:\?\.)?\s*\[\s*(?:"call"|'call')\s*\])`;
 
 function addToSet(set, value) {
   if (set.has(value)) return false;
@@ -235,6 +236,24 @@ function stripOuterParentheses(expression) {
     stripped = stripped.slice(1, -1).trim();
   }
   return stripped;
+}
+
+function normalizeParenthesizedCallee(expression) {
+  let normalized = expression.trim();
+  const continuation = new RegExp(
+    String.raw`^\s*(?:(?:\?\.)?\s*\(|(?:\.|\?\.)\s*(?:${identifierPattern}|\[)|\[)`,
+    'u'
+  );
+
+  while (normalized.startsWith('(')) {
+    const closing = findMatchingDelimiter(normalized, 0, '(', ')');
+    if (closing === -1) break;
+    const callee = normalized.slice(1, closing).trim();
+    const tail = normalized.slice(closing + 1);
+    if (!callee || !continuation.test(tail)) break;
+    normalized = `${callee}${tail}`;
+  }
+  return normalized;
 }
 
 function splitTopLevel(source, separator = ',') {
@@ -379,10 +398,11 @@ function parseStaticStringLiteral(expression) {
 }
 
 function parseNodeFsLoaderExpression(expression, bindings) {
+  const normalized = normalizeParenthesizedCallee(expression);
   const loader = new RegExp(
-    `^(?:await\\s+)?(?:\\(\\s*)*(${identifierPattern})(?:\\s*\\))*\\s*(?:\\.\\s*(call))?\\s*(?:\\?\\.)?\\s*\\(`,
+    `^(?:await\\s+)?(?:\\(\\s*)*(${identifierPattern})\\s*(${callPropertyPattern})?\\s*(?:\\?\\.)?\\s*\\(`,
     'u'
-  ).exec(expression);
+  ).exec(normalized);
   if (!loader) return null;
 
   const loaderName = loader[1];
@@ -391,14 +411,14 @@ function parseNodeFsLoaderExpression(expression, bindings) {
   if (!isDynamicImport && !isRequire) return null;
 
   const opening = loader[0].lastIndexOf('(');
-  const end = findMatchingDelimiter(expression, opening, '(', ')');
+  const end = findMatchingDelimiter(normalized, opening, '(', ')');
   if (end === -1) return null;
 
-  const isCallInvocation = loader[2] === 'call';
+  const isCallInvocation = loader[2] !== undefined;
   const moduleSpecifierIndex = isCallInvocation ? 1 : 0;
-  const source = splitTopLevel(expression.slice(opening + 1, end))[moduleSpecifierIndex];
+  const source = splitTopLevel(normalized.slice(opening + 1, end))[moduleSpecifierIndex];
   const staticSpecifier = parseStaticStringLiteral(source || '');
-  const tail = expression.slice(end + 1);
+  const tail = normalized.slice(end + 1);
   if (staticSpecifier && new RegExp(`^${nodeFsModuleSpecifierPattern}$`, 'u').test(staticSpecifier)) {
     return {
       descriptors: [isDynamicImport
@@ -414,8 +434,15 @@ function parseNodeFsLoaderExpression(expression, bindings) {
 }
 
 function parseReflectGetExpression(expression) {
-  const dot = /^Reflect\s*\.\s*get\s*(?:\.\s*(call)\s*)?\(/u.exec(expression);
-  const bracket = /^Reflect\s*\[\s*([^\]\r\n]*)\s*\]\s*(?:\.\s*(call)\s*)?\(/u.exec(expression);
+  const normalized = normalizeParenthesizedCallee(expression);
+  const dot = new RegExp(
+    `^Reflect\\s*\\.\\s*get\\s*(${callPropertyPattern})?\\s*(?:\\?\\.)?\\s*\\(`,
+    'u'
+  ).exec(normalized);
+  const bracket = new RegExp(
+    `^Reflect\\s*\\[\\s*([^\\]\\r\\n]*)\\s*\\]\\s*(${callPropertyPattern})?\\s*(?:\\?\\.)?\\s*\\(`,
+    'u'
+  ).exec(normalized);
   const match = dot ?? bracket;
   if (!match) return null;
 
@@ -423,11 +450,11 @@ function parseReflectGetExpression(expression) {
   if (bracketProperty !== null && bracketProperty !== 'get') return null;
 
   const opening = match[0].lastIndexOf('(');
-  const end = findMatchingDelimiter(expression, opening, '(', ')');
+  const end = findMatchingDelimiter(normalized, opening, '(', ')');
   if (end === -1) return null;
 
-  const values = splitTopLevel(expression.slice(opening + 1, end));
-  const argumentOffset = dot?.[1] === 'call' || bracket?.[2] === 'call' ? 1 : 0;
+  const values = splitTopLevel(normalized.slice(opening + 1, end));
+  const argumentOffset = dot?.[1] !== undefined || bracket?.[2] !== undefined ? 1 : 0;
   const [target, property] = values.slice(argumentOffset, argumentOffset + 2);
   if (!target || !property) return null;
   return {
@@ -435,7 +462,7 @@ function parseReflectGetExpression(expression) {
     property: bracketProperty === null
       ? dynamicNodeFsProperty
       : (parseStaticStringLiteral(property) ?? dynamicNodeFsProperty),
-    tail: expression.slice(end + 1)
+    tail: normalized.slice(end + 1)
   };
 }
 
@@ -449,21 +476,25 @@ function isPotentialReflectGetAliasExpression(expression) {
 }
 
 function parseReflectGetAliasExpression(expression, bindings) {
-  const match = new RegExp(`^(${identifierPattern})\\s*(?:\\.\\s*(call)\\s*)?\\(`, 'u').exec(expression);
+  const normalized = normalizeParenthesizedCallee(expression);
+  const match = new RegExp(
+    `^(${identifierPattern})\\s*(${callPropertyPattern})?\\s*(?:\\?\\.)?\\s*\\(`,
+    'u'
+  ).exec(normalized);
   if (!match || !bindings.reflectGetAliases.has(match[1])) return null;
 
   const opening = match[0].lastIndexOf('(');
-  const end = findMatchingDelimiter(expression, opening, '(', ')');
+  const end = findMatchingDelimiter(normalized, opening, '(', ')');
   if (end === -1) return null;
 
-  const values = splitTopLevel(expression.slice(opening + 1, end));
-  const argumentOffset = match[2] === 'call' ? 1 : 0;
+  const values = splitTopLevel(normalized.slice(opening + 1, end));
+  const argumentOffset = match[2] !== undefined ? 1 : 0;
   const [target, property] = values.slice(argumentOffset, argumentOffset + 2);
   if (!target || !property) return null;
   return {
     target,
     property: parseStaticStringLiteral(property) ?? dynamicNodeFsProperty,
-    tail: expression.slice(end + 1)
+    tail: normalized.slice(end + 1)
   };
 }
 
@@ -717,7 +748,7 @@ function addDirectLoaderMutationOperations(content, bindings, operationIds) {
     .map(escapeRegexLiteral)
     .join('|');
   const loaderPattern = new RegExp(
-    `(?<![A-Za-z0-9_$])(?:\\(\\s*)*(?:${names})(?:\\s*\\))*\\s*(?:\\.\\s*call)?\\s*(?:\\?\\.)?\\s*\\(`,
+    `(?<![A-Za-z0-9_$])(?:\\(\\s*)*(?:${names})(?:\\s*${callPropertyPattern})?(?:\\s*\\))*(?:\\s*${callPropertyPattern})?\\s*(?:\\?\\.)?\\s*\\(`,
     'gu'
   );
   for (const match of content.matchAll(loaderPattern)) {
@@ -740,7 +771,10 @@ function addReflectGetInvocationOperations(content, bindings, operationIds) {
     ...[...bindings.reflectGetAliases].map(escapeRegexLiteral)
   ];
   for (const callee of callees) {
-    const pattern = new RegExp(`(?<![A-Za-z0-9_$])(?:${callee})(?:\\s*\\.\\s*call)?\\s*\\(`, 'gu');
+    const pattern = new RegExp(
+      `(?<![A-Za-z0-9_$])(?:\\(\\s*)*(?:${callee})(?:\\s*${callPropertyPattern})?(?:\\s*\\))*(?:\\s*${callPropertyPattern})?\\s*(?:\\?\\.)?\\s*\\(`,
+      'gu'
+    );
     for (const match of content.matchAll(pattern)) {
       const start = match.index ?? 0;
       const opening = start + match[0].lastIndexOf('(');
@@ -1160,6 +1194,86 @@ test('audit reads loader call specifiers after thisArgs and follows parenthesize
       new Set(legacyDocumentOperations(content)),
       new Set(['node-fs-mutation:dynamic-property']),
       `parenthesized alias case ${index}`
+    );
+  }
+});
+
+test('audit fails closed on parenthesized and optional Reflect.get invocations', () => {
+  const cases = [
+    [
+      "const disk = require('node:fs');",
+      '(Reflect.get)(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      "(Reflect['get'])(disk, method)(target, content);"
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'Reflect.get?.(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      "Reflect['get']?.(disk, method)(target, content);"
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'const get = Reflect.get;',
+      '(get)(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      "const get = Reflect['get'];",
+      '(get)(disk, method)(target, content);'
+    ].join('\n')
+  ];
+
+  for (const [index, content] of cases.entries()) {
+    assert.deepEqual(
+      new Set(legacyDocumentOperations(content)),
+      new Set(['node-fs-mutation:dynamic-property']),
+      `parenthesized or optional Reflect.get case ${index}`
+    );
+  }
+
+  const unrelatedModule = [
+    "const path = require('node:path');",
+    '(Reflect.get)(path, method)(target, content);'
+  ].join('\n');
+  assert.deepEqual(legacyDocumentOperations(unrelatedModule), []);
+});
+
+test('audit reads optional, parenthesized, and bracketed loader call specifiers after thisArgs', () => {
+  const callForms = [
+    'require?.call',
+    '(require.call)',
+    "require['call']",
+    "require?.['call']",
+    "(require['call'])",
+    '(require)?.call',
+    'require.call?.'
+  ];
+
+  for (const [index, callee] of callForms.entries()) {
+    const dynamicModule = callee + '(null, moduleSpecifier).writeFileSync(target, content);';
+    assert.deepEqual(
+      new Set(legacyDocumentOperations(dynamicModule)),
+      new Set(['node-fs-mutation:dynamic-property']),
+      `dynamic loader call form ${index}`
+    );
+
+    const nodeFsModule = callee + "('node:path', 'node:fs').writeFileSync(target, content);";
+    assert.deepEqual(
+      new Set(legacyDocumentOperations(nodeFsModule)),
+      new Set(['node-fs-mutation:writeFileSync']),
+      `static loader call form ${index}`
+    );
+
+    const nonFsModule = callee + "('node:fs', 'node:path').writeFileSync(target, content);";
+    assert.deepEqual(
+      legacyDocumentOperations(nonFsModule),
+      [],
+      `loader call thisArg must not become its module specifier: ${index}`
     );
   }
 });
