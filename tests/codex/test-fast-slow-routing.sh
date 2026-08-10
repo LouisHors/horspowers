@@ -13,6 +13,7 @@ OUTPUT="$RUN_ROOT/router-output.json"
 
 mkdir -p "$FAKE_HOME" "$PROJECT_ROOT"
 git -C "$PROJECT_ROOT" init --quiet
+git -C "$PROJECT_ROOT" remote add origin https://github.com/example/horspowers-fixture.git
 
 if ! grep -q 'route-request.mjs' "$SKILL_FILE"; then
   echo '[FAIL] using-horspowers does not point to route-request.mjs'

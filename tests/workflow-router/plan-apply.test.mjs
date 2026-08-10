@@ -91,3 +91,67 @@ test('retains earlier Apply results and resumes only the unfinished docs step', 
   assert.equal(second.project.docs, 'created');
   assert.deepEqual(mutations, ['agents:create', 'project:0', 'agents:unchanged', 'project:1']);
 });
+
+test('blocks company target skills until the external document runtime is ready', async () => {
+  const result = await routeRequest(input('给这个功能写实施计划'), {
+    loadRules: async () => rules,
+    planAgents: async () => ({ status: 'unchanged' }),
+    planProject: async () => ({
+      eligibility: 'external_project',
+      project_root: '/retained-fixture/company-project',
+      config_action: 'external_required',
+      docs_action: 'skipped',
+      reason: 'company_external_config_required'
+    }),
+    applyAgents: async () => ({ status: 'unchanged' }),
+    applyProject: async () => ({ config: { status: 'external_required' }, docs: { status: 'skipped' } })
+  });
+
+  assert.equal(result.routing.route, 'planning');
+  assert.equal(result.routing.target_skill, null);
+  assert.equal(result.routing.blocked_by, 'company_external_config_required');
+  assert.equal(result.project.eligibility, 'external_project');
+  assert.equal(result.project.config, 'external_required');
+  assert.equal(result.project.docs, 'skipped');
+});
+
+test('keeps target skill routing for ordinary projects', async () => {
+  const result = await routeRequest(input('给这个功能写实施计划'), {
+    loadRules: async () => rules,
+    planAgents: async () => ({ status: 'unchanged' }),
+    planProject: async () => ({
+      eligibility: 'project',
+      project_root: '/retained-fixture/ordinary-project',
+      config_action: 'unchanged',
+      docs_action: 'unchanged',
+      reason: null
+    }),
+    applyAgents: async () => ({ status: 'unchanged' }),
+    applyProject: async () => ({ config: { status: 'unchanged' }, docs: { status: 'unchanged' } })
+  });
+
+  assert.equal(result.routing.route, 'planning');
+  assert.equal(result.routing.target_skill, 'horspowers:writing-plans');
+  assert.equal(result.routing.blocked_by, undefined);
+});
+
+test('only restores company target skills when a future runtime capability is injected', async () => {
+  const result = await routeRequest(input('给这个功能写实施计划'), {
+    externalDocumentRuntimeVersion: 1,
+    loadRules: async () => rules,
+    planAgents: async () => ({ status: 'unchanged' }),
+    planProject: async () => ({
+      eligibility: 'external_project',
+      project_root: '/retained-fixture/company-project',
+      config_action: 'external_required',
+      docs_action: 'skipped',
+      reason: 'company_external_config_required'
+    }),
+    applyAgents: async () => ({ status: 'unchanged' }),
+    applyProject: async () => ({ config: { status: 'external_required' }, docs: { status: 'skipped' } })
+  });
+
+  assert.equal(result.routing.route, 'planning');
+  assert.equal(result.routing.target_skill, 'horspowers:writing-plans');
+  assert.equal(result.routing.blocked_by, undefined);
+});

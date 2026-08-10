@@ -13,6 +13,24 @@ SESSION_END_TIME=$(date -u +"%Y-%m-%dT%H:%M:%SZ")
 # Get current working directory
 WORKING_DIR="$PWD"
 
+PROJECT_IDENTITY_KIND=$(PLUGIN_ROOT="$PLUGIN_ROOT" node --input-type=module -e '
+import path from "node:path";
+import { pathToFileURL } from "node:url";
+const moduleUrl = pathToFileURL(path.join(process.env.PLUGIN_ROOT, "lib/project-identity.mjs")).href;
+const { identifyGitProject } = await import(moduleUrl);
+const identity = await identifyGitProject(process.cwd());
+process.stdout.write(identity.kind);
+' 2>/dev/null || printf 'none')
+
+if [ "$PROJECT_IDENTITY_KIND" = "company" ] || [ "$PROJECT_IDENTITY_KIND" = "ambiguous_company_remote" ] || [ "$PROJECT_IDENTITY_KIND" = "none" ]; then
+    PROJECT_IDENTITY_KIND="$PROJECT_IDENTITY_KIND" node -e '
+const identity = process.env.PROJECT_IDENTITY_KIND;
+const context = `external-document-runtime-not-ready (${identity}); documentation not persisted`;
+console.log(JSON.stringify({ hookSpecificOutput: { hookEventName: "SessionEnd", additionalContext: context } }));
+'
+    exit 0
+fi
+
 # Get current git branch if in a git repo
 CURRENT_BRANCH=""
 if git rev-parse --git-dir > /dev/null 2>&1; then
