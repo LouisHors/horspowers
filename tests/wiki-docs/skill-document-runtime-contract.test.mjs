@@ -1144,6 +1144,11 @@ test('audit reads loader call specifiers after thisArgs and follows parenthesize
       '$load(moduleSpecifier).writeFileSync(target, content);'
     ].join('\n'),
     [
+      'const $load = (require);',
+      'const next = ($load);',
+      'next(moduleSpecifier).writeFileSync(target, content);'
+    ].join('\n'),
+    [
       "const disk = require('node:fs');",
       'const get = (Reflect.get);',
       'get(disk, method)(target, content);'
