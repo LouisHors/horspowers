@@ -46,10 +46,40 @@ const temporaryLegacyDocumentExceptions = new Map([
       'shell-document-append',
       'metadata-directory-write',
       'metadata-file-write',
-      'node-fs-mutation',
+      'node-fs-mutation:writeFileSync',
       'docs-core-archive'
     ])
   }]
+]);
+
+// These established writers retain separate, bounded responsibilities (managed
+// AGENTS content, ordinary-project upgrade compatibility, an ephemeral
+// brainstorm helper, and Graphviz rendering). They remain explicit
+// file-and-operation inventories rather than becoming a directory-level escape
+// hatch; adding a new Node fs mutation to any one of them must fail this audit.
+// They are not Task 7's temporary legacy exception.
+const establishedNodeFsMutationInventories = new Map([
+  ['lib/agents-managed-block.mjs', new Set([
+    'node-fs-mutation:copyFile',
+    'node-fs-mutation:mkdir',
+    'node-fs-mutation:rename',
+    'node-fs-mutation:writeFile'
+  ])],
+  ['lib/version-upgrade.js', new Set([
+    'node-fs-mutation:mkdirSync',
+    'node-fs-mutation:renameSync',
+    'node-fs-mutation:writeFileSync'
+  ])],
+  ['skills/brainstorming/scripts/server.cjs', new Set([
+    'node-fs-mutation:appendFileSync',
+    'node-fs-mutation:mkdirSync',
+    'node-fs-mutation:unlinkSync',
+    'node-fs-mutation:writeFileSync'
+  ])],
+  ['skills/writing-skills/render-graphs.js', new Set([
+    'node-fs-mutation:mkdirSync',
+    'node-fs-mutation:writeFileSync'
+  ])]
 ]);
 
 const runtimeTextExtensions = new Set([
@@ -65,10 +95,6 @@ const nodeFsMutationMethods = new Set([
   'mkdir', 'mkdtemp', 'open', 'rename', 'rm', 'rmdir', 'symlink', 'truncate',
   'unlink', 'utimes', 'write', 'writeFile', 'writev'
 ]);
-const nodeFsMutationMethodPattern = [...nodeFsMutationMethods]
-  .flatMap((method) => [method, `${method}Sync`])
-  .sort((left, right) => right.length - left.length)
-  .join('|');
 
 const legacyDocumentOperationPatterns = [
   ['legacy-docs-discovery', /\bfind\b[^\n]*(?:\$\{?[^}\n]*(?:doc|metadata)[^}\n]*\}?|(?:^|[\s"'`])docs\/)/iu],
@@ -110,105 +136,386 @@ async function isRuntimeTextPath(file) {
   return ((await stat(file)).mode & 0o111) !== 0;
 }
 
-function escapeRegex(value) {
-  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
-}
-
 function isNodeFsMutationMethod(method) {
   return nodeFsMutationMethods.has(method) ||
     (method.endsWith('Sync') && nodeFsMutationMethods.has(method.slice(0, -4)));
 }
 
-function destructuredNodeFsBindings(content, pattern, moduleBindings, directMutationBindings) {
-  for (const match of content.matchAll(pattern)) {
-    for (const part of match[1].split(',')) {
-      const binding = /^\s*([A-Za-z_$][\w$]*)(?:\s*(?::|\bas\b)\s*([A-Za-z_$][\w$]*))?\s*$/u.exec(part);
-      if (!binding) continue;
-      const [, imported, local = imported] = binding;
-      if (imported === 'promises') moduleBindings.add(local);
-      if (isNodeFsMutationMethod(imported)) directMutationBindings.add(local);
-    }
-  }
+const identifierPattern = String.raw`[A-Za-z_$][\w$]*`;
+const nodeFsModuleSpecifierPattern = String.raw`(?:node:)?fs(?:/promises)?`;
+
+function addToSet(set, value) {
+  if (set.has(value)) return false;
+  set.add(value);
+  return true;
 }
 
-function hasNodeFsMutation(content) {
-  const nodeFsModule = String.raw`(?:node:)?fs(?:/promises)?`;
-  const moduleBindings = new Set();
-  const directMutationBindings = new Set();
+function createNodeFsBindings() {
+  return {
+    modules: new Set(),
+    promises: new Set(),
+    methods: new Map()
+  };
+}
 
-  for (const match of content.matchAll(new RegExp(
-    String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\(\s*['"]${nodeFsModule}['"]\s*\)`,
-    'gu'
-  ))) moduleBindings.add(match[1]);
-  for (const match of content.matchAll(new RegExp(
-    String.raw`\bimport\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s+from\s+['"]${nodeFsModule}['"]`,
-    'gu'
-  ))) moduleBindings.add(match[1]);
+function addNodeFsBinding(bindings, name, descriptor) {
+  if (descriptor === 'module') return addToSet(bindings.modules, name);
+  if (descriptor === 'promises') return addToSet(bindings.promises, name);
+  if (!descriptor.startsWith('method:')) return false;
 
-  const cjsDestructure = new RegExp(
-    String.raw`\b(?:const|let|var)\s*\{([^}]+)\}\s*=\s*require\(\s*['"]${nodeFsModule}['"]\s*\)`,
-    'gu'
-  );
-  const esmDestructure = new RegExp(
-    String.raw`\bimport\s*\{([^}]+)\}\s*from\s*['"]${nodeFsModule}['"]`,
-    'gu'
-  );
-  destructuredNodeFsBindings(content, cjsDestructure, moduleBindings, directMutationBindings);
-  destructuredNodeFsBindings(content, esmDestructure, moduleBindings, directMutationBindings);
+  const method = descriptor.slice('method:'.length);
+  const methods = bindings.methods.get(name) || new Set();
+  const changed = addToSet(methods, method);
+  bindings.methods.set(name, methods);
+  return changed;
+}
 
-  const methodProperty = String.raw`(?:(?:\.|\?\.)\s*(?:${nodeFsMutationMethodPattern})|\[\s*['"](?:${nodeFsMutationMethodPattern})['"]\s*\])`;
-  const directRequireAlias = new RegExp(
-    String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\(\s*['"]${nodeFsModule}['"]\s*\)\s*${methodProperty}`,
-    'gu'
-  );
-  for (const match of content.matchAll(directRequireAlias)) directMutationBindings.add(match[1]);
+function descriptorsForNodeFsBinding(bindings, name) {
+  const descriptors = [];
+  if (bindings.modules.has(name)) descriptors.push('module');
+  if (bindings.promises.has(name)) descriptors.push('promises');
+  for (const method of bindings.methods.get(name) || []) descriptors.push(`method:${method}`);
+  return descriptors;
+}
 
-  let changed = true;
-  while (changed) {
-    changed = false;
-    for (const binding of [...moduleBindings]) {
-      const aliasPattern = new RegExp(
-        String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*${escapeRegex(binding)}\s*(?:\.|\?\.)\s*promises\b`,
-        'gu'
-      );
-      for (const match of content.matchAll(aliasPattern)) {
-        if (!moduleBindings.has(match[1])) {
-          moduleBindings.add(match[1]);
-          changed = true;
-        }
+function findMatchingDelimiter(source, start, opening, closing) {
+  let depth = 0;
+  let quote = null;
+  let escaped = false;
+
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === opening) depth += 1;
+    if (character === closing) {
+      depth -= 1;
+      if (depth === 0) return index;
+    }
+  }
+  return -1;
+}
+
+function splitTopLevel(source, separator = ',') {
+  const values = [];
+  let start = 0;
+  let braces = 0;
+  let brackets = 0;
+  let parentheses = 0;
+  let quote = null;
+  let escaped = false;
+
+  for (let index = 0; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === '{') braces += 1;
+    else if (character === '}') braces -= 1;
+    else if (character === '[') brackets += 1;
+    else if (character === ']') brackets -= 1;
+    else if (character === '(') parentheses += 1;
+    else if (character === ')') parentheses -= 1;
+    else if (character === separator && braces === 0 && brackets === 0 && parentheses === 0) {
+      values.push(source.slice(start, index));
+      start = index + 1;
+    }
+  }
+  values.push(source.slice(start));
+  return values;
+}
+
+function findTopLevelCharacter(source, expected) {
+  const pieces = splitTopLevel(source, expected);
+  if (pieces.length === 1) return -1;
+  return pieces[0].length;
+}
+
+function stripDefaultBinding(value) {
+  const [binding] = splitTopLevel(value, '=');
+  const match = new RegExp(`^\\s*(${identifierPattern})\\s*$`, 'u').exec(binding);
+  return match ? match[1] : null;
+}
+
+function parseObjectPattern(pattern, prefix = []) {
+  const trimmed = pattern.trim();
+  if (!trimmed.startsWith('{') || !trimmed.endsWith('}')) return [];
+  const body = trimmed.slice(1, -1);
+  const bindings = [];
+
+  for (const rawEntry of splitTopLevel(body)) {
+    const entry = rawEntry.trim();
+    if (!entry || entry.startsWith('...')) continue;
+    const colonIndex = findTopLevelCharacter(entry, ':');
+    if (colonIndex === -1) {
+      const namedImport = new RegExp(`^(${identifierPattern})(?:\\s+as\\s+(${identifierPattern}))?(?:\\s*=.*)?$`, 'u').exec(entry);
+      if (namedImport) bindings.push({ path: [...prefix, namedImport[1]], name: namedImport[2] || namedImport[1] });
+      continue;
+    }
+
+    const property = entry.slice(0, colonIndex).trim();
+    const value = entry.slice(colonIndex + 1).trim();
+    if (!new RegExp(`^${identifierPattern}$`, 'u').test(property)) continue;
+    if (value.startsWith('{')) {
+      const closing = findMatchingDelimiter(value, 0, '{', '}');
+      if (closing === value.length - 1) bindings.push(...parseObjectPattern(value, [...prefix, property]));
+      continue;
+    }
+    const name = stripDefaultBinding(value);
+    if (name) bindings.push({ path: [...prefix, property], name });
+  }
+  return bindings;
+}
+
+function parseStaticPropertyPath(tail) {
+  const properties = [];
+  let index = 0;
+
+  while (index < tail.length) {
+    while (/\s/u.test(tail[index] || '')) index += 1;
+    if (index >= tail.length) return properties;
+
+    if (tail.startsWith('?.', index)) index += 2;
+    else if (tail[index] === '.') index += 1;
+
+    while (/\s/u.test(tail[index] || '')) index += 1;
+    if (tail[index] === '[') {
+      index += 1;
+      while (/\s/u.test(tail[index] || '')) index += 1;
+      const quote = tail[index];
+      if (quote !== '"' && quote !== "'") return null;
+      index += 1;
+      const end = tail.indexOf(quote, index);
+      if (end === -1) return null;
+      properties.push(tail.slice(index, end));
+      index = end + 1;
+      while (/\s/u.test(tail[index] || '')) index += 1;
+      if (tail[index] !== ']') return null;
+      index += 1;
+      continue;
+    }
+
+    const property = new RegExp(`^${identifierPattern}`, 'u').exec(tail.slice(index));
+    if (!property) return null;
+    properties.push(property[0]);
+    index += property[0].length;
+  }
+  return properties;
+}
+
+function resolveNodeFsDescriptors(descriptors, properties) {
+  let resolved = new Set(descriptors);
+  for (const property of properties) {
+    const next = new Set();
+    for (const descriptor of resolved) {
+      if (descriptor === 'module' && property === 'promises') next.add('promises');
+      else if ((descriptor === 'module' || descriptor === 'promises') && isNodeFsMutationMethod(property)) {
+        next.add(`method:${property}`);
       }
     }
+    resolved = next;
+    if (resolved.size === 0) break;
   }
-
-  const methodInvocation = String.raw`${methodProperty}\s*(?:(?:\?\.)?\s*\(|(?:\.|\?\.)\s*(?:apply|bind|call)\s*\()`;
-  const memberPath = String.raw`(?:\s*(?:\.|\?\.)\s*[A-Za-z_$][\w$]*)*`;
-  if (new RegExp(String.raw`require\(\s*['"]${nodeFsModule}['"]\s*\)(?:\s*(?:\.|\?\.)\s*promises)?\s*${methodInvocation}`, 'u').test(content)) {
-    return true;
-  }
-  for (const binding of moduleBindings) {
-    if (new RegExp(String.raw`\b${escapeRegex(binding)}${memberPath}\s*${methodInvocation}`, 'u').test(content)) return true;
-    const aliasPattern = new RegExp(
-      String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*${escapeRegex(binding)}${memberPath}\s*${methodProperty}`,
-      'gu'
-    );
-    for (const match of content.matchAll(aliasPattern)) directMutationBindings.add(match[1]);
-  }
-  for (const binding of directMutationBindings) {
-    if (new RegExp(String.raw`\b${escapeRegex(binding)}\s*\(`, 'u').test(content)) return true;
-  }
-  return false;
+  return [...resolved];
 }
 
-function legacyDocumentOperations(content, { includeNodeFsMutations = true } = {}) {
-  const operations = legacyDocumentOperationPatterns
-    .filter(([, pattern]) => pattern.test(content))
-    .map(([id]) => id);
-  if (includeNodeFsMutations && hasNodeFsMutation(content)) operations.push('node-fs-mutation');
-  return operations;
+function resolveNodeFsExpression(expression, bindings) {
+  const trimmed = expression.trim();
+  const requireMatch = new RegExp(
+    String.raw`^require\(\s*['"](${nodeFsModuleSpecifierPattern})['"]\s*\)([\s\S]*)$`,
+    'u'
+  ).exec(trimmed);
+  let descriptors;
+  let tail;
+
+  if (requireMatch) {
+    descriptors = [requireMatch[1].endsWith('/promises') ? 'promises' : 'module'];
+    tail = requireMatch[2];
+  } else {
+    const bindingMatch = new RegExp(`^(${identifierPattern})([\\s\\S]*)$`, 'u').exec(trimmed);
+    if (!bindingMatch) return [];
+    descriptors = descriptorsForNodeFsBinding(bindings, bindingMatch[1]);
+    tail = bindingMatch[2];
+  }
+
+  const properties = parseStaticPropertyPath(tail);
+  if (!properties) return [];
+  const resolved = resolveNodeFsDescriptors(descriptors, properties);
+  if (resolved.length > 0 || properties.length === 0) return resolved;
+  const wrapper = properties.at(-1);
+  if (!['apply', 'bind', 'call'].includes(wrapper)) return resolved;
+  return resolveNodeFsDescriptors(descriptors, properties.slice(0, -1));
 }
 
-function isNodeFsMutationAuditCandidate(rel) {
-  return rel.startsWith('scripts/') || rel === 'hooks/session-end.sh';
+function readDeclarationExpression(source, start) {
+  let braces = 0;
+  let brackets = 0;
+  let parentheses = 0;
+  let quote = null;
+  let escaped = false;
+
+  for (let index = start; index < source.length; index += 1) {
+    const character = source[index];
+    if (quote) {
+      if (escaped) escaped = false;
+      else if (character === '\\') escaped = true;
+      else if (character === quote) quote = null;
+      continue;
+    }
+    if (character === '"' || character === "'" || character === '`') {
+      quote = character;
+      continue;
+    }
+    if (character === '{') braces += 1;
+    else if (character === '}') braces -= 1;
+    else if (character === '[') brackets += 1;
+    else if (character === ']') brackets -= 1;
+    else if (character === '(') parentheses += 1;
+    else if (character === ')') parentheses -= 1;
+    else if (character === ';' && braces === 0 && brackets === 0 && parentheses === 0) return source.slice(start, index);
+    else if (character === '\n' && braces === 0 && brackets === 0 && parentheses === 0) return source.slice(start, index);
+  }
+  return source.slice(start);
+}
+
+function objectDestructuringDeclarations(content) {
+  const declarations = [];
+  const declarationPattern = /\b(?:const|let|var)\s+/gu;
+  for (const match of content.matchAll(declarationPattern)) {
+    let index = match.index + match[0].length;
+    while (/\s/u.test(content[index] || '')) index += 1;
+    if (content[index] !== '{') continue;
+    const end = findMatchingDelimiter(content, index, '{', '}');
+    if (end === -1) continue;
+    let expressionStart = end + 1;
+    while (/\s/u.test(content[expressionStart] || '')) expressionStart += 1;
+    if (content[expressionStart] !== '=') continue;
+    expressionStart += 1;
+    declarations.push({
+      pattern: content.slice(index, end + 1),
+      expression: readDeclarationExpression(content, expressionStart)
+    });
+  }
+  return declarations;
+}
+
+function simpleVariableDeclarations(content) {
+  const declarations = [];
+  const declarationPattern = new RegExp(
+    String.raw`\b(?:const|let|var)\s+(${identifierPattern})\s*=\s*`,
+    'gu'
+  );
+  for (const match of content.matchAll(declarationPattern)) {
+    declarations.push({ name: match[1], expression: readDeclarationExpression(content, match.index + match[0].length) });
+  }
+  return declarations;
+}
+
+function addDestructuredNodeFsBindings(bindings, sourceDescriptors, pattern) {
+  let changed = false;
+  for (const entry of parseObjectPattern(pattern)) {
+    for (const descriptor of resolveNodeFsDescriptors(sourceDescriptors, entry.path)) {
+      changed = addNodeFsBinding(bindings, entry.name, descriptor) || changed;
+    }
+  }
+  return changed;
+}
+
+function addEsmNodeFsBindings(content, bindings) {
+  const importPattern = new RegExp(
+    String.raw`(?:^|\n)\s*import\s+([^\n;]+?)\s+from\s+['"](${nodeFsModuleSpecifierPattern})['"]`,
+    'gu'
+  );
+
+  for (const match of content.matchAll(importPattern)) {
+    const specifiers = match[1].trim();
+    const sourceDescriptors = [match[2].endsWith('/promises') ? 'promises' : 'module'];
+    if (specifiers.startsWith('* as ')) {
+      const name = stripDefaultBinding(specifiers.slice('* as '.length));
+      if (name) addNodeFsBinding(bindings, name, sourceDescriptors[0]);
+      continue;
+    }
+    if (specifiers.startsWith('{')) {
+      addDestructuredNodeFsBindings(bindings, sourceDescriptors, specifiers);
+      continue;
+    }
+
+    const [defaultSpecifier, ...namedSpecifiers] = splitTopLevel(specifiers);
+    const defaultName = stripDefaultBinding(defaultSpecifier);
+    if (defaultName) addNodeFsBinding(bindings, defaultName, sourceDescriptors[0]);
+    const named = namedSpecifiers.join(',').trim();
+    if (named.startsWith('{')) addDestructuredNodeFsBindings(bindings, sourceDescriptors, named);
+  }
+}
+
+function collectNodeFsBindings(content) {
+  const bindings = createNodeFsBindings();
+  addEsmNodeFsBindings(content, bindings);
+  const simpleDeclarations = simpleVariableDeclarations(content);
+  const objectDeclarations = objectDestructuringDeclarations(content);
+
+  for (let pass = 0; pass < 32; pass += 1) {
+    let changed = false;
+    for (const declaration of simpleDeclarations) {
+      for (const descriptor of resolveNodeFsExpression(declaration.expression, bindings)) {
+        changed = addNodeFsBinding(bindings, declaration.name, descriptor) || changed;
+      }
+    }
+    for (const declaration of objectDeclarations) {
+      const sourceDescriptors = resolveNodeFsExpression(declaration.expression, bindings);
+      changed = addDestructuredNodeFsBindings(bindings, sourceDescriptors, declaration.pattern) || changed;
+    }
+    if (!changed) break;
+  }
+  return bindings;
+}
+
+function nodeFsMutationOperations(content) {
+  const bindings = collectNodeFsBindings(content);
+  const staticAccessor = String.raw`(?:(?:\.|\?\.)\s*${identifierPattern}|(?:\?\.)?\s*\[\s*['"][^'"]+['"]\s*\])`;
+  const invocationPattern = new RegExp(
+    String.raw`((?:\brequire\(\s*['"]${nodeFsModuleSpecifierPattern}['"]\s*\)|\b(?!require\b)${identifierPattern})(?:\s*${staticAccessor})*)\s*(?:\?\.)?\s*\(`,
+    'gu'
+  );
+  const operationIds = new Set();
+
+  for (const match of content.matchAll(invocationPattern)) {
+    for (const descriptor of resolveNodeFsExpression(match[1], bindings)) {
+      if (descriptor.startsWith('method:')) operationIds.add(`node-fs-mutation:${descriptor.slice('method:'.length)}`);
+    }
+  }
+  return [...operationIds].sort();
+}
+
+function legacyDocumentOperations(content) {
+  return [...new Set([
+    ...legacyDocumentOperationPatterns
+      .filter(([, pattern]) => pattern.test(content))
+      .map(([id]) => id),
+    ...nodeFsMutationOperations(content)
+  ])];
+}
+
+function auditRuntimeText(relativePath, content) {
+  return {
+    file: relativePath,
+    operationIds: legacyDocumentOperations(content)
+  };
 }
 
 test('daily workflow skills route document operations through the shared runtime', async () => {
@@ -279,6 +586,7 @@ test('read and write workflow contracts retain their workflow gates through runt
 
 test('repository audit rejects direct document operations outside the exact allowlist or Task 7 exception', async () => {
   assert.equal(lowLevelWriteAllowlist.has('scripts/migrate-docs.js'), false);
+  assert.equal(establishedNodeFsMutationInventories.has('scripts/migrate-docs.js'), false);
   const allFiles = await walk(repoRoot);
   const textFlags = await Promise.all(allFiles.map(isRuntimeTextPath));
   const files = allFiles.filter((_, index) => textFlags[index]);
@@ -287,10 +595,14 @@ test('repository audit rejects direct document operations outside the exact allo
   for (const file of files) {
     const rel = relative(file);
     const content = await readFile(file, 'utf8');
-    const operationIds = legacyDocumentOperations(content, {
-      includeNodeFsMutations: isNodeFsMutationAuditCandidate(rel)
-    });
+    const { operationIds } = auditRuntimeText(rel, content);
     if (operationIds.length === 0 || lowLevelWriteAllowlist.has(rel)) continue;
+
+    const establishedInventory = establishedNodeFsMutationInventories.get(rel);
+    if (establishedInventory) {
+      assert.deepEqual(new Set(operationIds), establishedInventory, `${rel} must not gain an unreviewed Node fs mutation`);
+      continue;
+    }
 
     const exception = temporaryLegacyDocumentExceptions.get(rel);
     if (!exception) {
@@ -341,7 +653,11 @@ test('audit recognizes Node fs mutations through generic CJS bindings and proper
   ].join('\n');
 
   assert.deepEqual(new Set(legacyDocumentOperations(content)), new Set([
-    'node-fs-mutation'
+    'node-fs-mutation:appendFileSync',
+    'node-fs-mutation:mkdirSync',
+    'node-fs-mutation:renameSync',
+    'node-fs-mutation:unlinkSync',
+    'node-fs-mutation:writeFile'
   ]));
 });
 
@@ -367,11 +683,96 @@ test('audit follows Node fs method aliases and static property access', () => {
     ].join('\n')
   ];
 
-  for (const content of cases) {
+  const expectedOperationIds = [
+    'node-fs-mutation:writeFileSync',
+    'node-fs-mutation:mkdirSync',
+    'node-fs-mutation:writeFileSync',
+    'node-fs-mutation:createWriteStream'
+  ];
+
+  for (const [index, content] of cases.entries()) {
     assert.deepEqual(new Set(legacyDocumentOperations(content)), new Set([
-      'node-fs-mutation'
+      expectedOperationIds[index]
     ]));
   }
+});
+
+test('audit applies Node fs mutation detection to every runtime text path, including hook .cjs files', () => {
+  const relativePath = 'hooks/legacy-document-writer.cjs';
+  assert.equal(isKnownRuntimeTextRelativePath(relativePath), true);
+  const content = [
+    "const fileSystem = require('node:fs');",
+    "fileSystem['writeFileSync'](record.target, 'unsafe');"
+  ].join('\n');
+
+  assert.deepEqual(new Set(auditRuntimeText(relativePath, content).operationIds), new Set([
+    'node-fs-mutation:writeFileSync'
+  ]));
+});
+
+test('audit resolves CJS and ESM fs aliases, nested destructuring, and promises access paths', () => {
+  const cases = [
+    [
+      "const sourceFs = require('node:fs');",
+      'const disk = sourceFs;',
+      "disk.writeFileSync(record.target, 'unsafe');"
+    ].join('\n'),
+    [
+      "const { promises: { writeFile: persist } } = require('node:fs');",
+      "persist(record.target, 'unsafe');"
+    ].join('\n'),
+    [
+      "import fileSystem, { writeFile as persist } from 'node:fs';",
+      'const disk = fileSystem;',
+      'disk.mkdirSync(record.directory, { recursive: true });',
+      "persist(record.target, 'unsafe');"
+    ].join('\n'),
+    [
+      "const fileSystem = require('fs');",
+      "fileSystem['promises']['writeFile'](record.target, 'unsafe');"
+    ].join('\n'),
+    "require('fs').promises.writeFile(record.target, 'unsafe');",
+    [
+      "const persist = require('fs').promises.writeFile;",
+      "persist(record.target, 'unsafe');"
+    ].join('\n')
+  ];
+
+  const expectedOperationIds = [
+    ['node-fs-mutation:writeFileSync'],
+    ['node-fs-mutation:writeFile'],
+    ['node-fs-mutation:mkdirSync', 'node-fs-mutation:writeFile'],
+    ['node-fs-mutation:writeFile'],
+    ['node-fs-mutation:writeFile'],
+    ['node-fs-mutation:writeFile']
+  ];
+
+  for (const [index, content] of cases.entries()) {
+    assert.deepEqual(new Set(legacyDocumentOperations(content)), new Set(expectedOperationIds[index]));
+  }
+});
+
+test('Task 7 legacy exception is explicitly operation-bounded', async () => {
+  const exception = temporaryLegacyDocumentExceptions.get('hooks/session-end.sh');
+  assert.equal(establishedNodeFsMutationInventories.has('hooks/session-end.sh'), false);
+  assert.deepEqual(exception.operationIds, new Set([
+    'legacy-docs-discovery',
+    'shell-document-append',
+    'metadata-directory-write',
+    'metadata-file-write',
+    'node-fs-mutation:writeFileSync',
+    'docs-core-archive'
+  ]));
+  assert.equal(exception.operationIds.has('node-fs-mutation:rmSync'), false);
+
+  const sessionEnd = await readRelative('hooks/session-end.sh');
+  const unexpectedOperationIds = new Set(legacyDocumentOperations([
+    sessionEnd,
+    "const fileSystem = require('node:fs');",
+    'fileSystem.rmSync(record.target);'
+  ].join('\n')));
+  assert.equal(unexpectedOperationIds.has('node-fs-mutation:rmSync'), true);
+  assert.notDeepEqual(unexpectedOperationIds, exception.operationIds);
 });
 
 test('the only deferred legacy hook stays behind the company-project early-exit gate', async (t) => {
