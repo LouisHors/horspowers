@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto';
 import test from 'node:test';
 
 import { WikiDocsBackend } from '../../lib/document-backends/wiki-docs-backend.mjs';
+import { validateAndSerializeSafeDocument } from '../../lib/submission-safety.mjs';
 
 const COLLECTION = 'my-code-wiki';
 const ROOT_URI = `qmd://${COLLECTION}/projects/ugcli-lib`;
@@ -39,9 +40,9 @@ function projectConfig({ autoSubmit = true } = {}) {
   };
 }
 
-function pagesFor(config = projectConfig(), { taskStatus = 'active' } = {}) {
+function pagesFor(config = projectConfig(), { taskStatus = 'active', taskBody } = {}) {
   const configPage = machinePage('horspowers-config', config, '# Config\n\n');
-  const taskPage = '# Task\n\nImplement the bounded runtime.\n';
+  const taskPage = taskBody ?? '# Task\n\nImplement the bounded runtime.\n';
   const manifest = {
     schema_version: 1,
     project_id: config.project_id,
@@ -107,6 +108,27 @@ function safeDocument() {
     }],
     references: []
   };
+}
+
+async function canonicalSafeDocument(document = safeDocument()) {
+  const serialized = await validateAndSerializeSafeDocument(document, '/retained-fixture/company-project', {
+    sourceSimilarityGuard: async () => ({ ok: true })
+  });
+  assert.equal(serialized.ok, true);
+  return serialized.markdown;
+}
+
+function submissionMetadata(payload) {
+  const match = /<!-- horspowers-submission:start -->\n```json\n([\s\S]+?)\n```\n<!-- horspowers-submission:end -->/u.exec(payload);
+  assert.ok(match, 'submission metadata must be present');
+  return JSON.parse(match[1]);
+}
+
+function proposedDocument(payload) {
+  const marker = '## Proposed document\n\n';
+  const index = payload.indexOf(marker);
+  assert.notEqual(index, -1, 'submission body must be present');
+  return payload.slice(index + marker.length);
 }
 
 function backend({
@@ -401,9 +423,10 @@ test('records each referenced document state once and rejects duplicate session 
   const config = projectConfig();
   const serialized = [];
   const submissions = [];
+  const taskBody = await canonicalSafeDocument();
   const fixture = backend({
     config,
-    pages: pagesFor(config, { taskStatus: 'completed' }),
+    pages: pagesFor(config, { taskStatus: 'completed', taskBody }),
     serializeSafeDocument: async (content) => {
       serialized.push(content);
       return { ok: true, markdown: '# Session document\n' };
@@ -429,13 +452,13 @@ test('records each referenced document state once and rejects duplicate session 
   });
 
   assert.equal(recorded.status, 'submitted_pending_review');
-  assert.equal(recorded.submissions.length, 2);
+  assert.equal(recorded.submissions.length, 3);
   assert.deepEqual(serialized[0].sections[0].bullets, [
     'Ended at: 2026-08-10T00:00:00Z',
     'Branch: feat/wiki-runtime',
   ]);
   assert.deepEqual(serialized[0].sections[1].bullets, [
-    'Reference task/implement-feature: completed (revision 2).'
+    'A referenced task is completed at revision 2.'
   ]);
 
   const duplicateFixture = backend({
@@ -455,6 +478,115 @@ test('records each referenced document state once and rejects duplicate session 
 
   assert.equal(duplicate.status, 'invalid_request');
   assert.equal(duplicate.error_code, 'session_reference_duplicate');
+});
+
+test('records reference progress before dependent archive using virtual revision and content-hash state', async () => {
+  const taskBody = await canonicalSafeDocument();
+  const submissions = [];
+  const fixture = backend({
+    pages: pagesFor(projectConfig(), { taskStatus: 'completed', taskBody }),
+    serializeSafeDocument: async (content) => validateAndSerializeSafeDocument(content, '/retained-fixture/company-project', {
+      sourceSimilarityGuard: async () => ({ ok: true })
+    }),
+    submitter: {
+      async submit(input) {
+        submissions.push(input);
+        return { ok: true, filename: `${submissions.length}.md` };
+      }
+    }
+  });
+
+  const result = await fixture.backend.recordSession({
+    session: {
+      session_id: 'opaque-session-id',
+      ended_at: '2026-08-10T00:00:00Z',
+      branch: 'feat/wiki-runtime'
+    },
+    document_refs: [{ document_type: 'task', logical_id: 'implement-feature' }],
+    auto_archive_completed: true
+  });
+
+  assert.equal(result.status, 'submitted_pending_review');
+  assert.equal(submissions.length, 3);
+  const metadata = submissions.map(({ payload }) => submissionMetadata(payload));
+  assert.deepEqual(metadata.map(entry => entry.operation), ['create', 'update', 'archive']);
+  assert.deepEqual(metadata.map(entry => entry.logical_id), [
+    'session-e62cbf06b289ac14a2f4c5d07acc5a53',
+    'implement-feature',
+    'implement-feature'
+  ]);
+  assert.equal(metadata[1].base_revision, 2);
+  assert.equal(metadata[1].proposed_revision, 3);
+  assert.equal(metadata[2].base_revision, 3);
+  assert.equal(metadata[2].proposed_revision, 4);
+
+  const updatedBody = proposedDocument(submissions[1].payload);
+  const transitionMatch = /<!-- horspowers-status-transition:start -->\n```json\n([\s\S]+?)\n```\n<!-- horspowers-status-transition:end -->/u.exec(proposedDocument(submissions[2].payload));
+  assert.ok(transitionMatch, 'archive must carry a status-transition machine block');
+  const transition = JSON.parse(transitionMatch[1]);
+  assert.equal(transition.content_sha256, sha256(updatedBody));
+  assert.equal(transition.from_status, 'completed');
+  assert.equal(transition.to_status, 'archived');
+});
+
+test('does not submit a dependent archive when the reference progress submission fails', async () => {
+  const taskBody = await canonicalSafeDocument();
+  const submissions = [];
+  const fixture = backend({
+    pages: pagesFor(projectConfig(), { taskStatus: 'completed', taskBody }),
+    serializeSafeDocument: async (content) => validateAndSerializeSafeDocument(content, '/retained-fixture/company-project', {
+      sourceSimilarityGuard: async () => ({ ok: true })
+    }),
+    submitter: {
+      async submit(input) {
+        submissions.push(input);
+        return submissions.length === 2
+          ? { ok: false, error_code: 'inbox_process_exit' }
+          : { ok: true, filename: `${submissions.length}.md` };
+      }
+    }
+  });
+
+  const result = await fixture.backend.recordSession({
+    session: {
+      session_id: 'opaque-session-id',
+      ended_at: '2026-08-10T00:00:00Z',
+      branch: 'feat/wiki-runtime'
+    },
+    document_refs: [{ document_type: 'task', logical_id: 'implement-feature' }],
+    auto_archive_completed: true
+  });
+
+  assert.equal(result.status, 'partially_submitted');
+  assert.equal(submissions.length, 2);
+  assert.deepEqual(submissions.map(({ payload }) => submissionMetadata(payload).operation), ['create', 'update']);
+  assert.ok(result.failures.some(failure => failure.operation === 'archive' && failure.error_code === 'submission_dependency_failed'));
+});
+
+test('fails closed rather than rewriting an arbitrary referenced Markdown page during session recording', async () => {
+  const submissions = [];
+  const fixture = backend({
+    pages: pagesFor(projectConfig(), { taskStatus: 'active', taskBody: '# Task\n\nUnstructured existing Markdown.\n' }),
+    submitter: {
+      async submit(input) {
+        submissions.push(input);
+        return { ok: true, filename: 'unexpected.md' };
+      }
+    }
+  });
+
+  const result = await fixture.backend.recordSession({
+    session: {
+      session_id: 'opaque-session-id',
+      ended_at: '2026-08-10T00:00:00Z',
+      branch: 'feat/wiki-runtime'
+    },
+    document_refs: [{ document_type: 'task', logical_id: 'implement-feature' }],
+    auto_archive_completed: false
+  });
+
+  assert.equal(result.status, 'safe_document_required');
+  assert.equal(submissions.length, 0);
 });
 
 test('requires explicit mutation bases and a complete, valid session request', async () => {

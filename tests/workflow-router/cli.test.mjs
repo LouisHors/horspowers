@@ -96,7 +96,7 @@ test('writes exactly one JSON object for a valid stdin envelope', async () => {
   assert.equal(JSON.parse(result.stdout).routing.route, 'direct');
 });
 
-test('does not load an old document workflow for a company project before the runtime exists', async () => {
+test('keeps a company Wiki-unavailable project mutation-free while restoring the migrated workflow target', async () => {
   const before = await snapshotTree(companyFixtureRoot);
   const result = await runCli({
     input: JSON.stringify(validInput({
@@ -111,8 +111,8 @@ test('does not load an old document workflow for a company project before the ru
   assert.deepEqual(after, before);
   const output = JSON.parse(result.stdout);
   assert.equal(output.routing.route, 'planning');
-  assert.equal(output.routing.target_skill, null);
-  assert.equal(output.routing.blocked_by, 'company_external_config_required');
+  assert.equal(output.routing.target_skill, 'horspowers:writing-plans');
+  assert.equal(output.routing.blocked_by, undefined);
   assert.equal(output.project.eligibility, 'external_project');
   assert.equal(output.project.identity_status, 'company');
   assert.equal(
@@ -121,6 +121,7 @@ test('does not load an old document workflow for a company project before the ru
   );
   assert.equal(output.project.config_source, 'none');
   assert.equal(output.project.documentation_backend, 'disabled');
+  assert.equal(output.project.documentation_status, 'wiki_unavailable');
   assert.equal(output.project.auto_submit, false);
 });
 

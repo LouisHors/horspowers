@@ -68,7 +68,7 @@ async function runHook(name, { cwd, env = {} }) {
   return { exitCode, stdout, stderr };
 }
 
-test('SessionStart leaves a company project on the external safety path', async () => {
+test('SessionStart leaves a company project mutation-free while reporting its unavailable Wiki runtime', async () => {
   const root = await retainedCompanyFixture('session-start-company');
   const fakeHome = path.join(root, 'fake-home');
   await mkdir(path.join(root, 'docs/active'), { recursive: true });
@@ -84,12 +84,13 @@ test('SessionStart leaves a company project on the external safety path', async 
   assert.equal(result.stderr, '');
   assert.deepEqual(after, before);
   const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
-  assert.match(context, /external-document-runtime-not-ready/);
+  assert.match(context, /wiki-unavailable/u);
+  assert.doesNotMatch(context, /external-document-runtime-not-ready/u);
   assert.doesNotMatch(context, /<config-(?:needs-init|needs-migration|needs-update|invalid|valid)>/);
   assert.doesNotMatch(context, /<upgrade-needed>/);
 });
 
-test('SessionEnd does not mutate company project documentation before the runtime exists', async () => {
+test('SessionEnd does not mutate company project documentation when its Wiki runtime is unavailable', async () => {
   const root = await retainedCompanyFixture('session-end-company');
   const fakeHome = path.join(root, 'fake-home');
   const taskDoc = path.join(root, 'docs/active/task.md');
@@ -111,7 +112,8 @@ test('SessionEnd does not mutate company project documentation before the runtim
   assert.equal(result.stderr, '');
   assert.deepEqual(after, before);
   const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
-  assert.match(context, /external-document-runtime-not-ready/);
+  assert.match(context, /wiki-unavailable/u);
+  assert.doesNotMatch(context, /external-document-runtime-not-ready/u);
   assert.match(context, /not persisted/);
 });
 

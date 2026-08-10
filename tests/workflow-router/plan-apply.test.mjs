@@ -94,6 +94,7 @@ test('retains earlier Apply results and resumes only the unfinished docs step', 
 
 test('blocks company target skills until the external document runtime is ready', async () => {
   const result = await routeRequest(input('给这个功能写实施计划'), {
+    externalDocumentRuntimeVersion: 0,
     loadRules: async () => rules,
     planAgents: async () => ({ status: 'unchanged' }),
     planProject: async () => ({
@@ -118,6 +119,7 @@ test('blocks company target skills until the external document runtime is ready'
 test('adds resolved external Wiki context without releasing the Task 1 safety gate', async () => {
   const fingerprint = `sha256:${'a'.repeat(64)}`;
   const result = await routeRequest(input('给这个功能写实施计划'), {
+    externalDocumentRuntimeVersion: 0,
     loadRules: async () => rules,
     planAgents: async () => ({ status: 'unchanged' }),
     planProject: async () => ({
@@ -161,6 +163,7 @@ test('adds resolved external Wiki context without releasing the Task 1 safety ga
 test('keeps the classified intent and skips local mutations when external context throws', async () => {
   let applyProjectCalls = 0;
   const result = await routeRequest(input('给这个功能写实施计划'), {
+    externalDocumentRuntimeVersion: 0,
     loadRules: async () => rules,
     planAgents: async () => ({ status: 'unchanged' }),
     planProject: async () => ({
@@ -208,23 +211,68 @@ test('keeps target skill routing for ordinary projects', async () => {
   assert.equal(result.routing.blocked_by, undefined);
 });
 
-test('only restores company target skills when a future runtime capability is injected', async () => {
-  const result = await routeRequest(input('给这个功能写实施计划'), {
-    externalDocumentRuntimeVersion: 1,
-    loadRules: async () => rules,
-    planAgents: async () => ({ status: 'unchanged' }),
-    planProject: async () => ({
-      eligibility: 'external_project',
-      project_root: '/retained-fixture/company-project',
-      config_action: 'external_required',
-      docs_action: 'skipped',
-      reason: 'company_external_config_required'
-    }),
-    applyAgents: async () => ({ status: 'unchanged' }),
-    applyProject: async () => ({ config: { status: 'external_required' }, docs: { status: 'skipped' } })
-  });
+test('version 1 restores safely migrated company target skills for ready and unavailable Wiki states', async () => {
+  const contexts = [
+    {
+      name: 'ready',
+      status: 'ready',
+      config_source: 'wiki',
+      documentation_backend: 'wiki',
+      documentation_enabled: true
+    },
+    {
+      name: 'wiki unavailable',
+      status: 'wiki_unavailable',
+      config_source: 'none',
+      documentation_backend: 'disabled',
+      documentation_enabled: false
+    },
+    {
+      name: 'unregistered',
+      status: 'unregistered_company_project',
+      config_source: 'none',
+      documentation_backend: 'disabled',
+      documentation_enabled: false
+    }
+  ];
 
-  assert.equal(result.routing.route, 'planning');
-  assert.equal(result.routing.target_skill, 'horspowers:writing-plans');
-  assert.equal(result.routing.blocked_by, undefined);
+  for (const context of contexts) {
+    const result = await routeRequest(input('给这个功能写实施计划'), {
+      externalDocumentRuntimeVersion: 1,
+      loadRules: async () => rules,
+      planAgents: async () => ({ status: 'unchanged' }),
+      planProject: async () => ({
+        eligibility: 'external_project',
+        project_root: '/retained-fixture/company-project',
+        identity: { kind: 'company', project_fingerprint: `sha256:${'a'.repeat(64)}` },
+        config_action: 'external_required',
+        docs_action: 'skipped',
+        reason: 'company_external_config_required'
+      }),
+      resolveProjectContext: async () => ({
+        status: context.status,
+        project: {
+          identity_status: 'company',
+          project_id: context.status === 'ready' ? 'ugnas/ugcli-lib' : null,
+          project_fingerprint: `sha256:${'a'.repeat(64)}`
+        },
+        config: { source: context.config_source, value: context.status === 'ready' ? {} : null },
+        documentation: {
+          backend: context.documentation_backend,
+          enabled: context.documentation_enabled,
+          auto_submit: context.documentation_enabled
+        }
+      }),
+      applyAgents: async () => ({ status: 'unchanged' }),
+      applyProject: async () => ({ config: { status: 'external_required' }, docs: { status: 'skipped' } })
+    });
+
+    assert.equal(result.routing.route, 'planning', context.name);
+    assert.equal(result.routing.target_skill, 'horspowers:writing-plans', context.name);
+    assert.equal(result.routing.blocked_by, undefined, context.name);
+    assert.equal(result.project.documentation_backend, context.documentation_backend, context.name);
+    assert.equal(result.project.documentation_status, context.status, context.name);
+    assert.equal(result.project.config, 'external_required', context.name);
+    assert.equal(result.project.docs, 'skipped', context.name);
+  }
 });

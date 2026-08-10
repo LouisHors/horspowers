@@ -35,23 +35,6 @@ const lowLevelWriteAllowlist = new Set([
   'lib/project-initializer.mjs'
 ]);
 
-// Task 7 has not migrated this hook to DocumentRuntime yet.  This exception
-// is intentionally a single file with a bounded legacy-operation inventory;
-// it does not make any other hook, extension, or indirect path acceptable.
-const temporaryLegacyDocumentExceptions = new Map([
-  ['hooks/session-end.sh', {
-    reason: 'Task 7 session-end migration is pending; its company-project early exit remains mandatory.',
-    operationIds: new Set([
-      'legacy-docs-discovery',
-      'shell-document-append',
-      'metadata-directory-write',
-      'metadata-file-write',
-      'node-fs-mutation:writeFileSync',
-      'docs-core-archive'
-    ])
-  }]
-]);
-
 // These established writers retain separate, bounded responsibilities (managed
 // AGENTS content, ordinary-project upgrade compatibility, an ephemeral
 // brainstorm helper, and Graphviz rendering). They remain explicit
@@ -230,16 +213,20 @@ function findMatchingDelimiter(source, start, opening, closing) {
 
 function stripOuterParentheses(expression) {
   let stripped = expression.trim();
-  while (stripped.startsWith('(')) {
-    const closing = findMatchingDelimiter(stripped, 0, '(', ')');
-    if (closing !== stripped.length - 1) break;
-    stripped = stripped.slice(1, -1).trim();
+  while (true) {
+    const awaitMatch = /^await\b\s*/u.exec(stripped);
+    const prefix = awaitMatch ? 'await ' : '';
+    const candidate = awaitMatch ? stripped.slice(awaitMatch[0].length).trim() : stripped;
+    if (!candidate.startsWith('(')) break;
+    const closing = findMatchingDelimiter(candidate, 0, '(', ')');
+    if (closing !== candidate.length - 1) break;
+    stripped = `${prefix}${candidate.slice(1, -1).trim()}`.trim();
   }
   return stripped;
 }
 
 function normalizeParenthesizedCallee(expression) {
-  let normalized = expression.trim();
+  let normalized = stripOuterParentheses(expression);
   const continuation = new RegExp(
     String.raw`^\s*(?:(?:\?\.)?\s*\(|(?:\.|\?\.)\s*(?:${identifierPattern}|\[)|\[)`,
     'u'
@@ -507,7 +494,7 @@ function resolveNodeFsProperties(descriptors, properties) {
 }
 
 function resolveNodeFsExpression(expression, bindings) {
-  const trimmed = expression.trim();
+  const trimmed = stripOuterParentheses(expression);
   const reflect = parseReflectGetExpression(trimmed) ?? parseReflectGetAliasExpression(trimmed, bindings);
   if (reflect) {
     const sourceDescriptors = resolveNodeFsExpression(reflect.target, bindings);
@@ -611,7 +598,7 @@ function addDestructuredNodeFsBindings(bindings, sourceDescriptors, pattern) {
 }
 
 function addDestructuredReflectGetAliases(bindings, expression, pattern) {
-  if (!/^Reflect\s*$/u.test(expression.trim())) return false;
+  if (!/^Reflect\s*$/u.test(stripOuterParentheses(expression))) return false;
   let changed = false;
   for (const entry of parseObjectPattern(pattern)) {
     if (entry.path.length === 1 && entry.path[0] === 'get') {
@@ -791,7 +778,7 @@ function nodeFsMutationOperations(content) {
   const bindings = collectNodeFsBindings(content);
   const accessor = String.raw`(?:(?:\.|\?\.)\s*${identifierPattern}|(?:\?\.)?\s*\[[^\]\r\n]*\])`;
   const invocationPattern = new RegExp(
-    String.raw`((?:\brequire\(\s*['"]${nodeFsModuleSpecifierPattern}['"]\s*\)|\b(?!require\b)${identifierPattern})(?:\s*${accessor})*)\s*(?:\?\.)?\s*\(`,
+    String.raw`((?:\(\s*)*(?:\brequire\(\s*['"]${nodeFsModuleSpecifierPattern}['"]\s*\)|\b(?!require\b)${identifierPattern})(?:\s*${accessor})*(?:\s*\))*)\s*(?:\?\.)?\s*\(`,
     'gu'
   );
   const operationIds = new Set();
@@ -886,7 +873,7 @@ test('read and write workflow contracts retain their workflow gates through runt
   assert.match(subagentDevelopment, /blocking.*修复.*复审[\s\S]*finishing/u);
 });
 
-test('repository audit rejects direct document operations outside the exact allowlist or Task 7 exception', async () => {
+test('repository audit rejects direct document operations outside the exact allowlist', async () => {
   assert.equal(lowLevelWriteAllowlist.has('scripts/migrate-docs.js'), false);
   assert.equal(establishedNodeFsMutationInventories.has('scripts/migrate-docs.js'), false);
   const allFiles = await walk(repoRoot);
@@ -906,14 +893,7 @@ test('repository audit rejects direct document operations outside the exact allo
       continue;
     }
 
-    const exception = temporaryLegacyDocumentExceptions.get(rel);
-    if (!exception) {
-      violations.push({ file: rel, operationIds });
-      continue;
-    }
-
-    assert.match(exception.reason, /Task 7/u, `${rel} exception must retain its migration reason`);
-    assert.deepEqual(new Set(operationIds), exception.operationIds, `${rel} exception must not hide a new legacy operation`);
+    violations.push({ file: rel, operationIds });
   }
 
   assert.deepEqual(violations, []);
@@ -1024,10 +1004,6 @@ test('audit fails closed on dynamic Node fs properties and their aliases', () =>
     ]));
   }
 
-  assert.equal(
-    temporaryLegacyDocumentExceptions.get('hooks/session-end.sh').operationIds.has('node-fs-mutation:dynamic-property'),
-    false
-  );
 });
 
 test('audit fails closed on dynamic module loading and Reflect fs access without flagging unrelated modules', () => {
@@ -1061,6 +1037,14 @@ test('audit fails closed on dynamic module loading and Reflect fs access without
     [
       'const disk = await import(moduleSpecifier);',
       "disk.writeFileSync(record.target, 'unsafe');"
+    ].join('\n'),
+    [
+      'const disk = (require(moduleSpecifier));',
+      "disk.writeFileSync(record.target, 'unsafe');"
+    ].join('\n'),
+    [
+      'const disk = await (import(moduleSpecifier));',
+      "disk.writeFileSync(record.target, 'unsafe');"
     ].join('\n')
   ];
 
@@ -1074,14 +1058,14 @@ test('audit fails closed on dynamic module loading and Reflect fs access without
     'const plugin = require(moduleSpecifier);',
     'plugin.run(record);',
     'const renderer = await import(rendererSpecifier);',
-    'renderer.render(record);'
+    'renderer.render(record);',
+    'const wrappedPlugin = (require(moduleSpecifier));',
+    'wrappedPlugin.run(record);',
+    'const wrappedRenderer = await (import(rendererSpecifier));',
+    'wrappedRenderer.render(record);'
   ].join('\n');
   assert.deepEqual(legacyDocumentOperations(unrelatedDynamicModule), []);
 
-  assert.equal(
-    temporaryLegacyDocumentExceptions.get('hooks/session-end.sh').operationIds.has('node-fs-mutation:dynamic-property'),
-    false
-  );
 });
 
 test('audit fails closed on direct Node fs loaders and Reflect.get aliases', () => {
@@ -1123,6 +1107,11 @@ test('audit fails closed on direct Node fs loaders and Reflect.get aliases', () 
       "const disk = require('node:fs');",
       'const { get } = Reflect;',
       'get(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'const { get } = (Reflect);',
+      'get(disk, method)(target, content);'
     ].join('\n')
   ];
 
@@ -1138,10 +1127,6 @@ test('audit fails closed on direct Node fs loaders and Reflect.get aliases', () 
   ].join('\n');
   assert.deepEqual(legacyDocumentOperations(unrelatedDynamicModule), []);
 
-  assert.equal(
-    temporaryLegacyDocumentExceptions.get('hooks/session-end.sh').operationIds.has('node-fs-mutation:dynamic-property'),
-    false
-  );
 });
 
 test('audit reads loader call specifiers after thisArgs and follows parenthesized aliases', () => {
@@ -1394,52 +1379,39 @@ test('audit resolves CJS and ESM fs aliases, nested destructuring, and promises 
   }
 });
 
-test('Task 7 legacy exception is explicitly operation-bounded', async () => {
-  const exception = temporaryLegacyDocumentExceptions.get('hooks/session-end.sh');
-  assert.equal(establishedNodeFsMutationInventories.has('hooks/session-end.sh'), false);
-  assert.deepEqual(exception.operationIds, new Set([
-    'legacy-docs-discovery',
-    'shell-document-append',
-    'metadata-directory-write',
-    'metadata-file-write',
-    'node-fs-mutation:writeFileSync',
-    'docs-core-archive'
-  ]));
-  assert.equal(exception.operationIds.has('node-fs-mutation:rmSync'), false);
+test('audit recognizes parenthesized fs method calls without flagging non-fs aliases', () => {
+  const fsCases = [
+    [
+      "const disk = require('node:fs');",
+      '(disk.writeFileSync)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'const persist = disk.writeFileSync;',
+      '(persist)(target, content);'
+    ].join('\n')
+  ];
 
-  const sessionEnd = await readRelative('hooks/session-end.sh');
-  const unexpectedOperationIds = new Set(legacyDocumentOperations([
-    sessionEnd,
-    "const fileSystem = require('node:fs');",
-    'fileSystem.rmSync(record.target);'
-  ].join('\n')));
-  assert.equal(unexpectedOperationIds.has('node-fs-mutation:rmSync'), true);
-  assert.notDeepEqual(unexpectedOperationIds, exception.operationIds);
+  for (const [index, content] of fsCases.entries()) {
+    assert.deepEqual(new Set(legacyDocumentOperations(content)), new Set([
+      'node-fs-mutation:writeFileSync'
+    ]), `parenthesized fs call case ${index}`);
+  }
+
+  const nonFs = [
+    "const path = require('node:path');",
+    'const join = path.join;',
+    '(join)(target, content);'
+  ].join('\n');
+  assert.deepEqual(legacyDocumentOperations(nonFs), []);
 });
 
-test('the only deferred legacy hook stays behind the company-project early-exit gate', async (t) => {
-  assert.deepEqual([...temporaryLegacyDocumentExceptions.keys()], ['hooks/session-end.sh']);
-  const content = await readRelative('hooks/session-end.sh');
-  const gate = /if \[ "\$PROJECT_IDENTITY_KIND" = "company" \] \|\| \[ "\$PROJECT_IDENTITY_KIND" = "ambiguous_company_remote" \] \|\| \[ "\$PROJECT_IDENTITY_KIND" = "none" \]; then[\s\S]*?exit 0/u;
-  assert.match(content, gate);
-  assert.ok(content.search(gate) < content.search(/\bfind\b[^\n]*\$project_docs_dir/u));
-  assert.ok(content.search(gate) < content.search(/>>\s*"\$doc_path"/u));
-  assert.ok(content.search(gate) < content.search(/\bnode\b[^\n]*\$docs_core[^\n]*\barchive\b/u));
-
-  const root = await mkdtemp(path.join(tmpdir(), 'horspowers-session-end-company-'));
-  t.after(() => rm(root, { recursive: true, force: true }));
-  await execFileAsync('git', ['init', '--quiet', root], { windowsHide: true });
-  await execFileAsync('git', ['-C', root, 'remote', 'add', 'origin', 'https://gitlab.ugnas.com/group/project.git'], {
-    windowsHide: true
-  });
-  const { stdout } = await execFileAsync('bash', [path.join(repoRoot, 'hooks/session-end.sh')], {
-    cwd: root,
-    encoding: 'utf8',
-    windowsHide: true
-  });
-
-  assert.match(stdout, /external-document-runtime-not-ready \(company\); documentation not persisted/u);
-  assert.equal((await readdir(root)).includes('docs'), false);
+test('Session hooks are thin runtime wrappers without a deferred legacy write exception', async () => {
+  for (const hook of ['hooks/session-start.sh', 'hooks/session-end.sh']) {
+    const content = await readRelative(hook);
+    assert.match(content, /session-hook-runtime\.mjs/u, `${hook} must delegate to the shared hook runtime`);
+    assert.deepEqual(legacyDocumentOperations(content), [], `${hook} must not retain direct document operations`);
+  }
 });
 
 test('upgrade entry is explicitly fail-closed for external-document projects', async () => {

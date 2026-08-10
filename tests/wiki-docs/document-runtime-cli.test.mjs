@@ -119,7 +119,13 @@ test('resolving a local runtime does not construct a docs backend or initialize 
   const runtime = new DocumentRuntime({
     resolveProjectContext: async () => ({
       status: 'ready',
-      project: { root: '/retained-fixture/local-project', project_id: 'fixture/local-runtime' },
+      project: {
+        root: '/retained-fixture/local-project',
+        project_id: 'fixture/local-runtime',
+        identity_status: 'external'
+      },
+      config: { source: 'local', value: {} },
+      config_status: 'valid',
       documentation: { enabled: true, backend: 'local' }
     }),
     LocalDocsBackend: class {
@@ -134,9 +140,66 @@ test('resolving a local runtime does not construct a docs backend or initialize 
   assert.deepEqual(result, {
     status: 'ready',
     backend: 'local',
-    project_id: 'fixture/local-runtime'
+    project_id: 'fixture/local-runtime',
+    identity_status: 'external',
+    config_source: 'local',
+    config_status: 'valid',
+    documentation_enabled: true
   });
   assert.equal(constructed, 0);
+});
+
+test('resolve exposes safe unavailable external documentation state without a local fallback', async () => {
+  const runtime = new DocumentRuntime({
+    resolveProjectContext: async () => ({
+      status: 'unregistered_company_project',
+      project: {
+        root: '/retained-fixture/company-project',
+        project_id: null,
+        identity_status: 'company'
+      },
+      config: { source: 'none', value: null },
+      config_status: 'unregistered',
+      documentation: { enabled: false, backend: 'disabled' }
+    })
+  });
+
+  const result = await runtime.resolve('/retained-fixture/company-project');
+
+  assert.deepEqual(result, {
+    status: 'unregistered_company_project',
+    backend: 'disabled',
+    project_id: null,
+    error_code: 'unregistered_company_project',
+    identity_status: 'company',
+    config_source: 'none',
+    config_status: 'unregistered',
+    documentation_enabled: false
+  });
+});
+
+test('normalizes an unknown project-context status to a documented unavailable runtime result', async () => {
+  const runtime = new DocumentRuntime({
+    resolveProjectContext: async () => ({
+      status: 'future_context_status',
+      project: {
+        root: '/retained-fixture/company-project',
+        project_id: 'fixture/company-runtime',
+        identity_status: 'company'
+      },
+      config: { source: 'wiki', value: null },
+      config_status: 'unavailable',
+      documentation: { enabled: false, backend: 'disabled' }
+    })
+  });
+
+  const result = await runtime.resolve('/retained-fixture/company-project');
+
+  assert.equal(result.status, 'context_unavailable');
+  assert.equal(result.backend, 'disabled');
+  assert.equal(result.error_code, 'context_status_unrecognized');
+  assert.equal(result.project_id, 'fixture/company-runtime');
+  assert.equal(result.identity_status, 'company');
 });
 
 test('Wiki contexts construct only the Wiki backend and keep unavailable contexts fail closed', async () => {
