@@ -139,9 +139,11 @@ test('extracts one exact JSON machine block without normalizing page content', (
 
 test('rejects missing, duplicate, malformed, and oversized machine blocks', () => {
   const valid = page('horspowers-registry', registry());
+  const duplicateJsonKey = '<!-- horspowers-registry:start -->\n```json\n{"projects":{"same":{"value":1},"same":{"value":2}}}\n```\n<!-- horspowers-registry:end -->\n';
   const cases = [
     ['missing', '# no machine block\n', 256 * 1024],
     ['duplicate', `${valid}\n${valid}`, 256 * 1024],
+    ['duplicate JSON key', duplicateJsonKey, 256 * 1024],
     ['malformed', '<!-- horspowers-registry:start -->\n```json\n{not json}\n```\n<!-- horspowers-registry:end -->\n', 256 * 1024],
     ['oversized', valid, 8]
   ];

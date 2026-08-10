@@ -139,20 +139,65 @@ test('resolving a local runtime does not construct a docs backend or initialize 
   assert.equal(constructed, 0);
 });
 
-test('Wiki and unavailable contexts fail closed without constructing a local backend', async () => {
-  let constructed = 0;
+test('Wiki contexts construct only the Wiki backend and keep unavailable contexts fail closed', async () => {
+  let localConstructed = 0;
+  let wikiOptions = null;
   const localBackend = class {
     constructor() {
-      constructed += 1;
+      localConstructed += 1;
+    }
+  };
+  const qmdClient = { getExact: async () => ({ ok: false }) };
+  const hostConfig = {
+    wiki: {
+      collection: 'my-code-wiki',
+      inbox: {
+        command: '/retained-fixture/wiki-inbox-submit',
+        timeout_ms: 1_000,
+        max_payload_bytes: 256 * 1024
+      }
     }
   };
   const wikiRuntime = new DocumentRuntime({
     resolveProjectContext: async () => ({
       status: 'ready',
       project: { root: '/retained-fixture/company-project', project_id: 'fixture/company-runtime' },
-      documentation: { enabled: true, backend: 'wiki' }
+      config: {
+        source: 'wiki',
+        value: {
+          project_id: 'fixture/company-runtime',
+          documentation: { collection: 'my-code-wiki' }
+        }
+      },
+      documentation: { enabled: true, backend: 'wiki' },
+      wiki: {
+        config_uri: 'qmd://my-code-wiki/projects/company/horspowers-config.md',
+        host_config: hostConfig,
+        qmd_client: qmdClient
+      }
     }),
-    LocalDocsBackend: localBackend
+    LocalDocsBackend: localBackend,
+    InboxSubmitter: class {
+      constructor(options) {
+        wikiOptions = { ...(wikiOptions ?? {}), inbox: options };
+      }
+    },
+    WikiDocsBackend: class {
+      constructor(options) {
+        wikiOptions = { ...(wikiOptions ?? {}), backend: options };
+      }
+
+      async execute(action, request, options) {
+        return {
+          status: 'ok',
+          backend: 'wiki',
+          project_id: 'fixture/company-runtime',
+          action,
+          request,
+          confirmed: options.confirmed
+        };
+      }
+    }
   });
   const unavailableRuntime = new DocumentRuntime({
     resolveProjectContext: async () => ({
@@ -170,10 +215,18 @@ test('Wiki and unavailable contexts fail closed without constructing a local bac
     cwd: '/retained-fixture/company-project', action: 'get', request: {}, confirmed: false
   });
 
-  assert.equal(wikiResult.status, 'wiki_backend_not_implemented');
+  assert.equal(wikiResult.status, 'ok');
   assert.equal(wikiResult.backend, 'wiki');
-  assert.equal(wikiResult.error_code, 'wiki_backend_not_implemented');
+  assert.equal(wikiResult.confirmed, false);
+  assert.equal(wikiOptions.backend.projectRoot, '/retained-fixture/company-project');
+  assert.equal(wikiOptions.backend.projectId, 'fixture/company-runtime');
+  assert.equal(wikiOptions.backend.configUri, 'qmd://my-code-wiki/projects/company/horspowers-config.md');
+  assert.equal(wikiOptions.backend.hostConfig, hostConfig);
+  assert.equal(wikiOptions.backend.qmdClient, qmdClient);
+  assert.equal(wikiOptions.inbox.command, '/retained-fixture/wiki-inbox-submit');
+  assert.equal(wikiOptions.inbox.timeoutMs, 1_000);
+  assert.equal(wikiOptions.inbox.maxPayloadBytes, 256 * 1024);
   assert.equal(unavailableResult.status, 'wiki_unavailable');
   assert.equal(unavailableResult.backend, 'disabled');
-  assert.equal(constructed, 0);
+  assert.equal(localConstructed, 0);
 });

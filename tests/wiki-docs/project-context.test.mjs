@@ -59,7 +59,14 @@ function baseDependencies({ identity = localIdentity(), local = null, wiki = nul
     defaultHostConfigPath: () => '/retained-fixture/home/.config/horspowers/host.json',
     readHostConfig: async () => ({ ok: true, config: { wiki: { collection: 'my-code-wiki' } } }),
     createQmdClient: () => ({ getExact: async () => ({ ok: false }) }),
-    resolveWikiProjectConfig: async () => wiki ?? { status: 'wiki_unavailable' },
+    resolveWikiProjectConfig: async () => {
+      const result = wiki ?? { status: 'wiki_unavailable' };
+      if (result?.status !== 'ready' || result.config_uri) return result;
+      return {
+        ...result,
+        config_uri: 'qmd://my-code-wiki/projects/ugcli-lib/horspowers-config.md'
+      };
+    },
     readConfigAtRoot: () => local
   };
 }
@@ -86,6 +93,38 @@ test('uses a valid Wiki configuration for a company project even when a local co
   assert.equal(context.documentation.backend, 'wiki');
   assert.equal(context.documentation.auto_submit, true);
   assert.equal(localReads, 0);
+});
+
+test('retains verified Wiki transport metadata internally for the document runtime', async () => {
+  const qmdClient = { getExact: async () => ({ ok: false }) };
+  const hostConfig = {
+    wiki: {
+      collection: 'my-code-wiki',
+      inbox: {
+        command: '/retained-fixture/wiki-inbox-submit',
+        timeout_ms: 1_000,
+        max_payload_bytes: 256 * 1024
+      }
+    }
+  };
+  const dependencies = baseDependencies({
+    identity: companyIdentity(),
+    wiki: {
+      status: 'ready',
+      config: wikiConfig(),
+      config_uri: 'qmd://my-code-wiki/projects/ugcli-lib/horspowers-config.md',
+      config_revision: 3
+    }
+  });
+  dependencies.readHostConfig = async () => ({ ok: true, config: hostConfig });
+  dependencies.createQmdClient = () => qmdClient;
+
+  const context = await resolveProjectContext({ cwd: ROOT, homeDir: '/retained-fixture/home', dependencies });
+
+  assert.equal(context.status, 'ready');
+  assert.equal(context.wiki.config_uri, 'qmd://my-code-wiki/projects/ugcli-lib/horspowers-config.md');
+  assert.equal(context.wiki.host_config, hostConfig);
+  assert.equal(context.wiki.qmd_client, qmdClient);
 });
 
 test('fails closed for a company Wiki error instead of reading an existing local configuration', async () => {
