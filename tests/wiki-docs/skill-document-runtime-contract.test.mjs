@@ -436,11 +436,11 @@ function parseNodeFsLoaderExpression(expression, bindings) {
 function parseReflectGetExpression(expression) {
   const normalized = normalizeParenthesizedCallee(expression);
   const dot = new RegExp(
-    `^Reflect\\s*\\.\\s*get\\s*(${callPropertyPattern})?\\s*(?:\\?\\.)?\\s*\\(`,
+    `^Reflect\\s*(?:\\.|\\?\\.)\\s*get\\s*(${callPropertyPattern})?\\s*(?:\\?\\.)?\\s*\\(`,
     'u'
   ).exec(normalized);
   const bracket = new RegExp(
-    `^Reflect\\s*\\[\\s*([^\\]\\r\\n]*)\\s*\\]\\s*(${callPropertyPattern})?\\s*(?:\\?\\.)?\\s*\\(`,
+    `^Reflect\\s*(?:\\?\\.)?\\s*\\[\\s*([^\\]\\r\\n]*)\\s*\\]\\s*(${callPropertyPattern})?\\s*(?:\\?\\.)?\\s*\\(`,
     'u'
   ).exec(normalized);
   const match = dot ?? bracket;
@@ -468,8 +468,8 @@ function parseReflectGetExpression(expression) {
 
 function isPotentialReflectGetAliasExpression(expression) {
   const trimmed = stripOuterParentheses(expression);
-  if (/^Reflect\s*\.\s*get\s*$/u.test(trimmed)) return true;
-  const bracket = /^Reflect\s*\[\s*([^\]\r\n]*)\s*\]$/u.exec(trimmed);
+  if (/^Reflect\s*(?:\.|\?\.)\s*get\s*$/u.test(trimmed)) return true;
+  const bracket = /^Reflect\s*(?:\?\.)?\s*\[\s*([^\]\r\n]*)\s*\]$/u.exec(trimmed);
   if (!bracket) return false;
   const property = parseStaticStringLiteral(bracket[1]);
   return property === null || property === 'get';
@@ -767,7 +767,7 @@ function addDirectLoaderMutationOperations(content, bindings, operationIds) {
 
 function addReflectGetInvocationOperations(content, bindings, operationIds) {
   const callees = [
-    'Reflect\\s*(?:\\.\\s*get|\\[\\s*[^\\]\\r\\n]*\\])',
+    'Reflect\\s*(?:(?:\\.|\\?\\.)\\s*get|(?:\\?\\.)?\\s*\\[\\s*[^\\]\\r\\n]*\\])',
     ...[...bindings.reflectGetAliases].map(escapeRegexLiteral)
   ];
   for (const callee of callees) {
@@ -1241,6 +1241,67 @@ test('audit fails closed on parenthesized and optional Reflect.get invocations',
     '(Reflect.get)(path, method)(target, content);'
   ].join('\n');
   assert.deepEqual(legacyDocumentOperations(unrelatedModule), []);
+});
+
+test('audit fails closed on optional Reflect property access and aliases', () => {
+  const cases = [
+    [
+      "const disk = require('node:fs');",
+      'Reflect?.get(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      "Reflect?.['get'](disk, method)(target, content);"
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      '(Reflect?.get)(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      "(Reflect?.['get'])(disk, method)(target, content);"
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'Reflect?.get?.(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      "Reflect?.['get']?.(disk, method)(target, content);"
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'const get = Reflect?.get;',
+      '(get)(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      "const get = Reflect?.['get'];",
+      '(get)(disk, method)(target, content);'
+    ].join('\n')
+  ];
+
+  for (const [index, content] of cases.entries()) {
+    assert.deepEqual(
+      new Set(legacyDocumentOperations(content)),
+      new Set(['node-fs-mutation:dynamic-property']),
+      `optional Reflect property access case ${index}`
+    );
+  }
+
+  const unrelatedModuleCases = [
+    [
+      "const path = require('node:path');",
+      'Reflect?.get(path, method)(target, content);'
+    ].join('\n'),
+    [
+      "const path = require('node:path');",
+      "Reflect?.['get']?.(path, method)(target, content);"
+    ].join('\n')
+  ];
+  for (const content of unrelatedModuleCases) {
+    assert.deepEqual(legacyDocumentOperations(content), []);
+  }
 });
 
 test('audit reads optional, parenthesized, and bracketed loader call specifiers after thisArgs', () => {
