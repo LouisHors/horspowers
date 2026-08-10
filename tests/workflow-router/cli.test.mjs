@@ -114,6 +114,14 @@ test('does not load an old document workflow for a company project before the ru
   assert.equal(output.routing.target_skill, null);
   assert.equal(output.routing.blocked_by, 'company_external_config_required');
   assert.equal(output.project.eligibility, 'external_project');
+  assert.equal(output.project.identity_status, 'company');
+  assert.equal(
+    output.project.project_fingerprint,
+    `sha256:${createHash('sha256').update('ugnas-gitlab/platform/ugcli-lib').digest('hex')}`
+  );
+  assert.equal(output.project.config_source, 'none');
+  assert.equal(output.project.documentation_backend, 'disabled');
+  assert.equal(output.project.auto_submit, false);
 });
 
 test('does not execute shell syntax embedded in a user message', async () => {

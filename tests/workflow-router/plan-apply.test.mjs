@@ -115,6 +115,79 @@ test('blocks company target skills until the external document runtime is ready'
   assert.equal(result.project.docs, 'skipped');
 });
 
+test('adds resolved external Wiki context without releasing the Task 1 safety gate', async () => {
+  const fingerprint = `sha256:${'a'.repeat(64)}`;
+  const result = await routeRequest(input('给这个功能写实施计划'), {
+    loadRules: async () => rules,
+    planAgents: async () => ({ status: 'unchanged' }),
+    planProject: async () => ({
+      eligibility: 'external_project',
+      project_root: '/retained-fixture/company-project',
+      identity: {
+        kind: 'company',
+        project_fingerprint: fingerprint
+      },
+      config_action: 'external_required',
+      docs_action: 'skipped',
+      reason: 'company_external_config_required'
+    }),
+    resolveProjectContext: async () => ({
+      status: 'ready',
+      project: {
+        identity_status: 'company',
+        project_id: 'ugnas/ugcli-lib',
+        project_fingerprint: fingerprint
+      },
+      config: { source: 'wiki', value: {} },
+      documentation: { backend: 'wiki', enabled: true, auto_submit: true }
+    }),
+    applyAgents: async () => ({ status: 'unchanged' }),
+    applyProject: async () => ({ config: { status: 'external_required' }, docs: { status: 'skipped' } })
+  });
+
+  assert.equal(result.routing.route, 'planning');
+  assert.equal(result.routing.target_skill, null);
+  assert.equal(result.routing.blocked_by, 'company_external_config_required');
+  assert.equal(result.project.identity_status, 'company');
+  assert.equal(result.project.project_id, 'ugnas/ugcli-lib');
+  assert.equal(result.project.project_fingerprint, fingerprint);
+  assert.equal(result.project.config_source, 'wiki');
+  assert.equal(result.project.documentation_backend, 'wiki');
+  assert.equal(result.project.auto_submit, true);
+  assert.equal(result.project.config, 'external_required');
+  assert.equal(result.project.docs, 'skipped');
+});
+
+test('keeps the classified intent and skips local mutations when external context throws', async () => {
+  let applyProjectCalls = 0;
+  const result = await routeRequest(input('给这个功能写实施计划'), {
+    loadRules: async () => rules,
+    planAgents: async () => ({ status: 'unchanged' }),
+    planProject: async () => ({
+      eligibility: 'external_project',
+      project_root: '/retained-fixture/company-project',
+      identity: { kind: 'company', project_fingerprint: `sha256:${'a'.repeat(64)}` },
+      config_action: 'external_required',
+      docs_action: 'skipped',
+      reason: 'company_external_config_required'
+    }),
+    resolveProjectContext: async () => { throw new Error('synthetic context failure'); },
+    applyAgents: async () => ({ status: 'unchanged' }),
+    applyProject: async (plan) => {
+      applyProjectCalls += 1;
+      assert.equal(plan.eligibility, 'external_project');
+      return { config: { status: 'external_required' }, docs: { status: 'skipped' } };
+    }
+  });
+
+  assert.equal(result.routing.route, 'planning');
+  assert.equal(result.routing.target_skill, null);
+  assert.equal(result.project.config_source, 'none');
+  assert.equal(result.project.documentation_backend, 'disabled');
+  assert.equal(result.project.auto_submit, false);
+  assert.equal(applyProjectCalls, 1);
+});
+
 test('keeps target skill routing for ordinary projects', async () => {
   const result = await routeRequest(input('给这个功能写实施计划'), {
     loadRules: async () => rules,
