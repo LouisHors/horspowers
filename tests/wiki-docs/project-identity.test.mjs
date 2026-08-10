@@ -1,11 +1,18 @@
 import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { mkdtemp, rm } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import test from 'node:test';
+import { promisify } from 'node:util';
 
 import {
   classifyRepositoryRemotes,
   identifyGitProject,
   normalizeRemoteUrl
 } from '../../lib/project-identity.mjs';
+
+const execFileAsync = promisify(execFile);
 
 const SAME_REPOSITORY = [
   'git@gitlab.ugnas.com:platform/ugcli-lib.git',
@@ -143,6 +150,45 @@ test('reads local remote names containing dots from Git config output', async ()
   assert.equal(identity.kind, 'company');
   assert.equal(identity.remote_name, 'origin.backup');
   assert.equal(identity.canonical_repository, 'ugnas-gitlab/platform/ugcli-lib');
+});
+
+test('reads space-separated Git config output without truncating a dotted remote name', async () => {
+  const identity = await identifyGitProject('/retained-fixture/space-separated-remote', {
+    execFile: async () => ({
+      stdout: 'remote.origin.backup.url git@gitlab.ugnas.com:platform/ugcli-lib.git\n'
+    })
+  });
+
+  assert.equal(identity.kind, 'company');
+  assert.equal(identity.remote_name, 'origin.backup');
+  assert.equal(identity.canonical_repository, 'ugnas-gitlab/platform/ugcli-lib');
+});
+
+test('classifies actual local Git remotes with dotted names as company or ordinary projects', async (t) => {
+  const root = await mkdtemp(path.join(tmpdir(), 'horspowers-project-identity-'));
+  t.after(() => rm(root, { recursive: true, force: true }));
+
+  const companyProject = path.join(root, 'company-project');
+  await execFileAsync('git', ['init', '--quiet', companyProject], { windowsHide: true });
+  await execFileAsync('git', [
+    '-C', companyProject, 'remote', 'add', 'origin.backup',
+    'git@gitlab.ugnas.com:platform/ugcli-lib.git'
+  ], { windowsHide: true });
+
+  const ordinaryProject = path.join(root, 'ordinary-project');
+  await execFileAsync('git', ['init', '--quiet', ordinaryProject], { windowsHide: true });
+  await execFileAsync('git', [
+    '-C', ordinaryProject, 'remote', 'add', 'upstream.cache',
+    'https://github.com/example/ordinary-project.git'
+  ], { windowsHide: true });
+
+  const companyIdentity = await identifyGitProject(companyProject);
+  const ordinaryIdentity = await identifyGitProject(ordinaryProject);
+
+  assert.equal(companyIdentity.kind, 'company');
+  assert.equal(companyIdentity.remote_name, 'origin.backup');
+  assert.equal(companyIdentity.canonical_repository, 'ugnas-gitlab/platform/ugcli-lib');
+  assert.equal(ordinaryIdentity.kind, 'external');
 });
 
 test('does not treat a global remote as a local project remote', async () => {
