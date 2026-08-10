@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
-import { mkdir, lstat, readdir, readFile, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, lstat, readdir, readFile, writeFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
@@ -56,8 +56,8 @@ async function snapshotTree(root) {
   return entries;
 }
 
-async function runHook(name, { cwd, env = {} }) {
-  const child = spawn('bash', [path.join(repoRoot, 'hooks', name)], {
+async function runHook(name, { cwd, env = {}, installationRoot = repoRoot }) {
+  const child = spawn('bash', [path.join(installationRoot, 'hooks', name)], {
     cwd,
     env: { ...process.env, ...env },
     shell: false,
@@ -77,9 +77,20 @@ async function runHook(name, { cwd, env = {} }) {
 
 async function fakeRuntime(name) {
   const root = path.join(artifactsRoot, `${Date.now()}-${process.pid}-${fixtureSequence += 1}-${name}-runtime`);
-  await mkdir(root, { recursive: true });
-  const cli = path.join(root, 'fake-runtime.mjs');
+  const pluginRoot = path.join(root, 'plugin');
+  const cli = path.join(pluginRoot, 'lib', 'document-runtime-cli.mjs');
   const log = path.join(root, 'requests.jsonl');
+  await Promise.all([
+    mkdir(path.join(pluginRoot, 'hooks'), { recursive: true }),
+    mkdir(path.join(pluginRoot, 'lib'), { recursive: true }),
+    mkdir(path.join(pluginRoot, 'skills', 'using-horspowers'), { recursive: true })
+  ]);
+  await Promise.all([
+    copyFile(path.join(repoRoot, 'hooks', 'session-start.sh'), path.join(pluginRoot, 'hooks', 'session-start.sh')),
+    copyFile(path.join(repoRoot, 'hooks', 'session-end.sh'), path.join(pluginRoot, 'hooks', 'session-end.sh')),
+    copyFile(path.join(repoRoot, 'lib', 'session-hook-runtime.mjs'), path.join(pluginRoot, 'lib', 'session-hook-runtime.mjs')),
+    writeFile(path.join(pluginRoot, 'skills', 'using-horspowers', 'SKILL.md'), '# fixture skill\n', 'utf8')
+  ]);
   await writeFile(cli, `
 import { appendFileSync } from 'node:fs';
 
@@ -116,7 +127,7 @@ if (request.action === 'resolve') {
 }
 process.stdout.write(JSON.stringify(result) + '\\n');
 `, 'utf8');
-  return { cli, log };
+  return { cli, log, pluginRoot };
 }
 
 async function runtimeRequests(log) {
@@ -155,9 +166,9 @@ test('SessionStart resolves a company Wiki runtime without local initialization 
 
   const result = await runHook('session-start.sh', {
     cwd: root,
+    installationRoot: runtime.pluginRoot,
     env: {
       HOME: fakeHome,
-      HORSPOWERS_DOCUMENT_RUNTIME_CLI: runtime.cli,
       HORSPOWERS_FAKE_RUNTIME_LOG: runtime.log,
       HORSPOWERS_FAKE_RUNTIME_MODE: 'wiki-ready'
     }
@@ -173,6 +184,26 @@ test('SessionStart resolves a company Wiki runtime without local initialization 
   assert.equal(requests.length, 1);
   assertRuntimeEnvelope(requests[0], 'resolve', root);
   assert.deepEqual(requests[0].request, {});
+});
+
+test('SessionStart ignores a document runtime CLI environment override', async () => {
+  const root = await fixture('session-start-runtime-override', 'https://github.com/example/session-hook-fixture.git');
+  const runtime = await fakeRuntime('session-start-runtime-override');
+  const fakeHome = path.join(root, 'fake-home');
+  await mkdir(fakeHome, { recursive: true });
+
+  const result = await runHook('session-start.sh', {
+    cwd: root,
+    env: {
+      HOME: fakeHome,
+      HORSPOWERS_DOCUMENT_RUNTIME_CLI: runtime.cli,
+      HORSPOWERS_FAKE_RUNTIME_LOG: runtime.log,
+      HORSPOWERS_FAKE_RUNTIME_MODE: 'wiki-ready'
+    }
+  });
+
+  hookContext(result);
+  assert.deepEqual(await runtimeRequests(runtime.log), []);
 });
 
 test('SessionEnd sends only structured session references to the runtime', async () => {
@@ -194,13 +225,13 @@ test('SessionEnd sends only structured session references to the runtime', async
 
   const result = await runHook('session-end.sh', {
     cwd: root,
+    installationRoot: runtime.pluginRoot,
     env: {
       HOME: fakeHome,
       CLAUDE_SESSION_ID: 'opaque-session-id',
       TASK_DOC: taskDoc,
       BUG_DOC: bugDoc,
       HORSPOWERS_SESSION_DOCUMENT_REFS_JSON: JSON.stringify(refs),
-      HORSPOWERS_DOCUMENT_RUNTIME_CLI: runtime.cli,
       HORSPOWERS_FAKE_RUNTIME_LOG: runtime.log,
       HORSPOWERS_FAKE_RUNTIME_MODE: 'local-ready'
     }
@@ -233,12 +264,12 @@ test('SessionEnd derives legacy document names only after a local runtime resolv
 
   const result = await runHook('session-end.sh', {
     cwd: root,
+    installationRoot: runtime.pluginRoot,
     env: {
       HOME: fakeHome,
       CLAUDE_SESSION_ID: 'opaque-session-id',
       TASK_DOC: path.join(root, 'docs/active/2026-08-10-task-runtime-boundary.md'),
       BUG_DOC: path.join(root, 'docs/active/2026-08-10-bug-runtime-boundary.md'),
-      HORSPOWERS_DOCUMENT_RUNTIME_CLI: runtime.cli,
       HORSPOWERS_FAKE_RUNTIME_LOG: runtime.log,
       HORSPOWERS_FAKE_RUNTIME_MODE: 'local-ready'
     }
@@ -265,10 +296,10 @@ test('SessionEnd reports unavailable company documentation without runtime stder
 
   const result = await runHook('session-end.sh', {
     cwd: root,
+    installationRoot: runtime.pluginRoot,
     env: {
       HOME: fakeHome,
       CLAUDE_SESSION_ID: 'opaque-session-id',
-      HORSPOWERS_DOCUMENT_RUNTIME_CLI: runtime.cli,
       HORSPOWERS_FAKE_RUNTIME_LOG: runtime.log,
       HORSPOWERS_FAKE_RUNTIME_MODE: 'wiki-unavailable',
       HORSPOWERS_FAKE_RUNTIME_STDERR: 'RUNTIME_STDERR_SECRET'

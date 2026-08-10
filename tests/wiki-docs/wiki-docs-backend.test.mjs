@@ -11,6 +11,8 @@ const MANIFEST_URI = `${ROOT_URI}/index.md`;
 const CONFIG_URI = `${ROOT_URI}/horspowers-config.md`;
 const TASK_URI = `${ROOT_URI}/tasks/implement-feature.md`;
 const FINGERPRINT = `sha256:${'a'.repeat(64)}`;
+const LOW_ENTROPY_IDENTIFIER_PADDING = 'a'.repeat(40);
+const OPAQUE_IDENTIFIER_SEGMENTS = ['abcdefghij', 'klmnopqrst', 'uvwxyz012345'];
 
 function sha256(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -71,6 +73,25 @@ function pagesFor(config = projectConfig(), { taskStatus = 'active', taskBody } 
     [MANIFEST_URI, machinePage('horspowers-manifest', manifest, '# Manifest\n\n')],
     [TASK_URI, taskPage]
   ]);
+}
+
+function pagesWithReferencedTask(config, logicalId, taskBody) {
+  const pages = pagesFor(config);
+  const manifestMatch = /<!-- horspowers-manifest:start -->\n```json\n([\s\S]+?)\n```\n<!-- horspowers-manifest:end -->/u.exec(pages.get(MANIFEST_URI));
+  assert.ok(manifestMatch, 'fixture manifest must have a machine block');
+  const manifest = JSON.parse(manifestMatch[1]);
+  const uri = `${ROOT_URI}/tasks/${logicalId}.md`;
+  manifest.documents[logicalId] = {
+    document_type: 'task',
+    uri,
+    revision: 1,
+    status: 'active',
+    content_sha256: sha256(taskBody),
+    updated_at: '2026-08-10T00:00:00Z'
+  };
+  pages.set(MANIFEST_URI, machinePage('horspowers-manifest', manifest, '# Manifest\n\n'));
+  pages.set(uri, taskBody);
+  return pages;
 }
 
 function fakeQmd(pages, searchResults = []) {
@@ -138,22 +159,33 @@ function backend({
   projectId = 'ugnas/ugcli-lib',
   config: providedConfig,
   submitter = { async submit() { return { ok: true, filename: 'fixture.md' }; } },
-  serializeSafeDocument = async () => ({ ok: true, markdown: '# Safe document\n' })
+  serializeSafeDocument = async () => ({ ok: true, markdown: '# Safe document\n' }),
+  dependencies: injectedDependencies = {},
+  inspectSubmissionText,
+  inspectSubmissionMetadataIdentifier
 } = {}) {
   const config = providedConfig ?? projectConfig({ autoSubmit });
   const pages = providedPages ?? pagesFor(config);
   const qmd = fakeQmd(pages, searchResults);
+  const options = {
+    projectRoot: '/retained-fixture/company-project',
+    projectId,
+    config,
+    configUri: CONFIG_URI,
+    hostConfig: { wiki: { collection: COLLECTION } },
+    qmdClient: qmd.client,
+    submitter,
+    ...(inspectSubmissionText ? { inspectSubmissionText } : {})
+  };
+  const dependencies = {
+    serializeSafeDocument,
+    createSubmissionId: () => '123e4567-e89b-42d3-a456-426614174000',
+    ...injectedDependencies,
+    ...(inspectSubmissionMetadataIdentifier ? { inspectSubmissionMetadataIdentifier } : {})
+  };
   return {
     qmd,
-    backend: new WikiDocsBackend({
-      projectRoot: '/retained-fixture/company-project',
-      projectId,
-      config,
-      configUri: CONFIG_URI,
-      hostConfig: { wiki: { collection: COLLECTION } },
-      qmdClient: qmd.client,
-      submitter
-    }, { serializeSafeDocument, createSubmissionId: () => '123e4567-e89b-42d3-a456-426614174000' })
+    backend: new WikiDocsBackend(options, dependencies)
   };
 }
 
@@ -182,6 +214,228 @@ test('fails closed for a missing document or manifest/body mismatch without loca
   const corruptResult = await corrupt.backend.get({ logical_id: 'implement-feature' });
   assert.equal(corruptResult.status, 'manifest_content_mismatch');
   assert.equal(corruptResult.backend, 'wiki');
+});
+
+test('blocks high-entropy project and logical IDs before any Inbox submission', async () => {
+  const submissions = [];
+  const submitter = {
+    async submit(submission) {
+      submissions.push(submission);
+      return { ok: true, filename: 'fixture.md' };
+    }
+  };
+  const token = 'aB3dE5fG7hJ9kLmNpQrStUvWxYz01234';
+  const unsafeConfig = projectConfig();
+  unsafeConfig.project_id = `fixture/${token}`;
+  const unsafeProjectPages = pagesFor(unsafeConfig);
+  const unsafeProject = backend({
+    config: unsafeConfig,
+    pages: unsafeProjectPages,
+    projectId: unsafeConfig.project_id,
+    submitter
+  });
+  const projectResult = await unsafeProject.backend.create({
+    document_type: 'plan', logical_id: 'safe-plan', base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+  assert.equal(projectResult.status, 'submission_safety_blocked');
+  assert.equal(projectResult.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(projectResult.project_id, null);
+  assert.equal(JSON.stringify(projectResult).includes(token), false);
+  assert.equal(submissions.length, 0);
+
+  const projectArchive = await unsafeProject.backend.archive({
+    document_type: 'task', logical_id: 'implement-feature', base_revision: 2,
+    content_kind: 'status-transition',
+    content: {
+      uri: TASK_URI,
+      content_sha256: sha256(unsafeProjectPages.get(TASK_URI)),
+      from_status: 'active',
+      to_status: 'archived'
+    }
+  });
+  assert.equal(projectArchive.status, 'submission_safety_blocked');
+  assert.equal(projectArchive.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(submissions.length, 0);
+
+  const unsafeLogical = backend({ submitter });
+  const unsafeLogicalId = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const unsafeRequests = [
+    ['create', {
+      document_type: 'plan', logical_id: unsafeLogicalId, base_revision: 0,
+      content_kind: 'document', content: safeDocument()
+    }],
+    ['update', {
+      document_type: 'task', logical_id: unsafeLogicalId, base_revision: 2,
+      content_kind: 'document', content: safeDocument()
+    }],
+    ['archive', {
+      document_type: 'task', logical_id: unsafeLogicalId, base_revision: 2,
+      content_kind: 'status-transition',
+      content: {
+        uri: TASK_URI,
+        content_sha256: sha256(pagesFor().get(TASK_URI)),
+        from_status: 'active',
+        to_status: 'archived'
+      }
+    }]
+  ];
+  for (const [operation, request] of unsafeRequests) {
+    const logicalResult = await unsafeLogical.backend[operation](request);
+    assert.equal(logicalResult.status, 'submission_safety_blocked', operation);
+    assert.equal(logicalResult.errors?.[0]?.code, 'high_entropy_credential', operation);
+  }
+  assert.equal(submissions.length, 0);
+});
+
+test('does not let a generic text inspector override metadata identifier safety', async () => {
+  const submissions = [];
+  const submitter = {
+    async submit(submission) {
+      submissions.push(submission);
+      return { ok: true, filename: 'unexpected.md' };
+    }
+  };
+  const genericPassThrough = () => ({ ok: true });
+  const unsafeToken = 'aB3dE5fG7hJ9kLmNpQrStUvWxYz01234';
+  const unsafeProjectId = `fixture/${unsafeToken}`;
+  const unsafeConfig = projectConfig();
+  unsafeConfig.project_id = unsafeProjectId;
+
+  const unsafeProject = backend({
+    config: unsafeConfig,
+    pages: pagesFor(unsafeConfig),
+    projectId: unsafeProjectId,
+    submitter,
+    dependencies: { inspectSubmissionText: genericPassThrough }
+  });
+  const projectResult = await unsafeProject.backend.create({
+    document_type: 'plan', logical_id: 'safe-plan', base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+  assert.equal(projectResult.status, 'submission_safety_blocked');
+  assert.equal(projectResult.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(projectResult.project_id, null);
+  assert.equal(JSON.stringify(projectResult).includes(unsafeToken), false);
+
+  const unsafeLogicalId = 'abcdefghijklmnopqrstuvwxyz0123456789';
+  const unsafeLogical = backend({ submitter, dependencies: { inspectSubmissionText: genericPassThrough } });
+  const logicalResult = await unsafeLogical.backend.create({
+    document_type: 'plan', logical_id: unsafeLogicalId, base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+  assert.equal(logicalResult.status, 'submission_safety_blocked');
+  assert.equal(logicalResult.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(JSON.stringify(logicalResult).includes(unsafeLogicalId), false);
+  assert.equal(submissions.length, 0);
+});
+
+test('blocks high-entropy metadata even when separators split the opaque value', async () => {
+  const submissions = [];
+  const submitter = {
+    async submit(input) {
+      submissions.push(input);
+      return { ok: true, filename: 'unexpected.md' };
+    }
+  };
+  for (const token of [
+    'abcdefghij-klmnopqrst-uvwxyz012345',
+    'abcdefghij/klmnopqrst/uvwxyz012345',
+    'aB3dE5fG7hJ9kLm/NpQrStUvWxYz0123',
+    'abcdefghij.klmnopqrst.uvwxyz012345'
+  ]) {
+    const unsafeConfig = projectConfig();
+    unsafeConfig.project_id = `fixture/${token}`;
+    const unsafeProject = backend({ config: unsafeConfig, projectId: unsafeConfig.project_id, submitter });
+    const projectResult = await unsafeProject.backend.create({
+      document_type: 'plan', logical_id: 'safe-plan', base_revision: 0,
+      content_kind: 'document', content: safeDocument()
+    });
+    assert.equal(projectResult.status, 'submission_safety_blocked', token);
+    assert.equal(projectResult.errors?.[0]?.code, 'high_entropy_credential', token);
+  }
+
+  const unsafeLogical = backend({ submitter });
+  const logicalResult = await unsafeLogical.backend.create({
+    document_type: 'plan', logical_id: 'abcdefghij-klmnopqrst-uvwxyz012345', base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+  assert.equal(logicalResult.status, 'submission_safety_blocked');
+  assert.equal(logicalResult.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(submissions.length, 0);
+});
+
+test('blocks low-entropy padded high-entropy project and logical IDs before submitting', async () => {
+  const submissions = [];
+  const submitter = {
+    async submit(input) {
+      submissions.push(input);
+      return { ok: true, filename: 'unexpected.md' };
+    }
+  };
+
+  for (const separator of ['-', '/', '.']) {
+    const opaqueSegments = OPAQUE_IDENTIFIER_SEGMENTS.join(separator);
+    const unsafeProjectId = `fixture/${LOW_ENTROPY_IDENTIFIER_PADDING}${separator}${opaqueSegments}`;
+    const unsafeConfig = projectConfig();
+    unsafeConfig.project_id = unsafeProjectId;
+    const fixture = backend({ config: unsafeConfig, projectId: unsafeProjectId, submitter });
+
+    const result = await fixture.backend.create({
+      document_type: 'plan', logical_id: 'safe-plan', base_revision: 0,
+      content_kind: 'document', content: safeDocument()
+    });
+
+    assert.equal(result.status, 'submission_safety_blocked', separator);
+    assert.equal(result.errors?.[0]?.code, 'high_entropy_credential', separator);
+    assert.equal(result.project_id, null, separator);
+    assert.equal(JSON.stringify(result).includes(unsafeProjectId), false, separator);
+  }
+
+  const unsafeLogicalId = `${LOW_ENTROPY_IDENTIFIER_PADDING}-${OPAQUE_IDENTIFIER_SEGMENTS.join('-')}`;
+  const logicalFixture = backend({ submitter });
+  const logicalResult = await logicalFixture.backend.create({
+    document_type: 'plan', logical_id: unsafeLogicalId, base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+
+  assert.equal(logicalResult.status, 'submission_safety_blocked');
+  assert.equal(logicalResult.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(JSON.stringify(logicalResult).includes(unsafeLogicalId), false);
+  assert.equal(submissions.length, 0);
+});
+
+test('rejects a high-entropy session reference before submitting any batch item', async () => {
+  const submissions = [];
+  const logicalId = 'abcdefghij-klmnopqrst-uvwxyz012345';
+  const taskBody = await canonicalSafeDocument();
+  const fixture = backend({
+    pages: pagesWithReferencedTask(projectConfig(), logicalId, taskBody),
+    serializeSafeDocument: async (content) => validateAndSerializeSafeDocument(content, '/retained-fixture/company-project', {
+      sourceSimilarityGuard: async () => ({ ok: true })
+    }),
+    submitter: {
+      async submit(input) {
+        submissions.push(input);
+        return { ok: true, filename: 'unexpected.md' };
+      }
+    }
+  });
+
+  const result = await fixture.backend.recordSession({
+    session: {
+      session_id: 'opaque-session-id',
+      ended_at: '2026-08-10T00:00:00Z',
+      branch: 'feat/wiki-runtime'
+    },
+    document_refs: [{ document_type: 'task', logical_id: logicalId }],
+    auto_archive_completed: false
+  });
+
+  assert.equal(result.status, 'submission_safety_blocked');
+  assert.equal(result.errors?.[0]?.path, '$.references[0].logical_id');
+  assert.equal(result.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(submissions.length, 0);
 });
 
 test('requires the manifest config entry to match the exact config page before reading documents', async () => {
@@ -511,7 +765,7 @@ test('records reference progress before dependent archive using virtual revision
   const metadata = submissions.map(({ payload }) => submissionMetadata(payload));
   assert.deepEqual(metadata.map(entry => entry.operation), ['create', 'update', 'archive']);
   assert.deepEqual(metadata.map(entry => entry.logical_id), [
-    'session-e62cbf06b289ac14a2f4c5d07acc5a53',
+    's-26o25gooys4pxtqa4',
     'implement-feature',
     'implement-feature'
   ]);

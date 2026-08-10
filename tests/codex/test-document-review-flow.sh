@@ -37,7 +37,7 @@ if ! "$TIMEOUT_BIN" 180s "$CODEX_BIN" exec "According to the horspowers brainsto
   exit 1
 fi
 
-if grep -qiE "spec-document-reviewer-prompt\.md|structured spec review|结构化.*审查|结构化.*评审" "$output_file"; then
+if grep -qiE "spec-document-reviewer-prompt\.md|structured spec review|结构化.*审查|结构化.*评审|结构化.*[Ss]pec.*[Rr]eview" "$output_file"; then
   echo "  [PASS] Codex sees brainstorming spec review gate"
 else
   echo "  [FAIL] Codex did not report brainstorming spec review gate"
@@ -53,8 +53,8 @@ else
   exit 1
 fi
 
-if grep -qiE "before.*user review|user review gate|Only ask for user review after|用户审查.*之前|用户评审.*之前" "$output_file" && \
-   grep -qiE "rerun|re-run|run.*again|重新运行.*审查|再次.*审查" "$output_file"; then
+if grep -qiE "before.*user review|user review gate|Only ask for user review after|用户审查.*之前|用户评审.*之前|用户评审前" "$output_file" && \
+   grep -qiE "rerun|re-run|run.*again|重新运行.*审查|再次.*审查|重新加载.*完整.*正文.*复审" "$output_file"; then
   echo "  [PASS] Codex preserves review ordering and blocking-issue rerun"
 else
   echo "  [FAIL] Codex did not preserve brainstorming review ordering or rerun"
@@ -76,7 +76,7 @@ else
   exit 1
 fi
 
-if grep -qiE "complete.*plan.*body|complete.*design.*body|full.*plan|完整.*计划.*正文|完整.*设计.*正文|runtime.*get" "$output_file"; then
+if grep -qiE "complete.*plan.*body|complete.*design.*body|full.*plan|完整.*计划.*正文|完整.*设计.*正文|两份.*完整.*正文|runtime.*get" "$output_file"; then
   echo "  [PASS] Codex gives reviewer complete plan and design content"
 else
   echo "  [FAIL] Codex did not require complete plan/design content for review"
@@ -85,7 +85,7 @@ else
 fi
 
 if grep -qiE "before.*execution handoff|Only continue when.*Approved|execution handoff.*before|执行交接之前|Approved" "$output_file" && \
-   grep -qiE "rerun|re-run|run.*again|重新运行.*审查|再次.*审查" "$output_file"; then
+   grep -qiE "rerun|re-run|run.*again|重新运行.*审查|再次.*审查|重新加载.*完整.*正文.*复审" "$output_file"; then
   echo "  [PASS] Codex preserves plan approval rule and blocking-issue rerun"
 else
   echo "  [FAIL] Codex did not preserve plan review approval rule or rerun"

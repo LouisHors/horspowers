@@ -3,6 +3,9 @@ import test from 'node:test';
 
 import { validateAndSerializeSafeDocument } from '../../lib/submission-safety.mjs';
 
+const LOW_ENTROPY_IDENTIFIER_PADDING = 'a'.repeat(40);
+const OPAQUE_IDENTIFIER_SEGMENTS = ['abcdefghij', 'klmnopqrst', 'uvwxyz012345'];
+
 function validDocument() {
   return {
     schema_version: 1,
@@ -28,7 +31,7 @@ function validDocument() {
         expected: 'PASS'
       }]
     }],
-    references: [{ document_type: 'decision', logical_id: 'external-docs-decision' }]
+    references: [{ document_type: 'decision', logical_id: 'related-decision' }]
   };
 }
 
@@ -60,6 +63,8 @@ test('rejects unknown structure, raw code/content fields, and unsafe document sy
     ['arbitrary code field', (value) => { value.sections[0].code = 'const leaked = true'; }],
     ['arbitrary body field', (value) => { value.sections[0].body = 'unmodelled body'; }],
     ['raw markdown fence', (value) => { value.sections[0].paragraphs = ['```javascript']; }],
+    ['space-indented code block', (value) => { value.sections[0].paragraphs = ['    console.log("copied source")']; }],
+    ['tab-indented code block', (value) => { value.sections[0].paragraphs = ['\tconsole.log("copied source")']; }],
     ['HTML', (value) => { value.sections[0].paragraphs = ['<script>unsafe</script>']; }],
     ['blockquote', (value) => { value.sections[0].paragraphs = ['> quoted source']; }],
     ['external URL', (value) => { value.sections[0].paragraphs = ['https://example.invalid/source']; }],
@@ -89,6 +94,24 @@ test('rejects unknown structure, raw code/content fields, and unsafe document sy
     assert.equal(result.ok, false, name);
     assert.ok(['safe_document_required', 'submission_safety_blocked'].includes(result.error_code), name);
     assert.equal(JSON.stringify(result).includes('secret-value'), false, name);
+  }
+});
+
+test('rejects high-entropy logical IDs in structured references', async () => {
+  for (const logicalId of [
+    'abcdefghijklmnopqrstuvwxyz0123456789',
+    'abcdefghij-klmnopqrst-uvwxyz012345',
+    `${LOW_ENTROPY_IDENTIFIER_PADDING}-${OPAQUE_IDENTIFIER_SEGMENTS.join('-')}`
+  ]) {
+    const value = validDocument();
+    value.references[0].logical_id = logicalId;
+
+    const result = await validate(value);
+
+    assert.equal(result.ok, false, logicalId);
+    assert.equal(result.error_code, 'submission_safety_blocked', logicalId);
+    assert.deepEqual(result.errors, [{ path: '$.references[0].logical_id', code: 'high_entropy_credential' }], logicalId);
+    assert.equal(JSON.stringify(result).includes(logicalId), false, logicalId);
   }
 });
 

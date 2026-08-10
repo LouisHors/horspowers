@@ -10,6 +10,9 @@ import {
   renderInboxSubmission
 } from '../../lib/inbox-submitter.mjs';
 
+const LOW_ENTROPY_IDENTIFIER_PADDING = 'a'.repeat(40);
+const OPAQUE_IDENTIFIER_SEGMENTS = ['abcdefghij', 'klmnopqrst', 'uvwxyz012345'];
+
 function metadata(operation = 'create') {
   return {
     schema_version: 1,
@@ -124,6 +127,14 @@ test('uses the same strict metadata envelope for every mutation operation and se
   }
   const batchItem = renderInboxSubmission({ metadata: metadata('update'), proposedDocument: '# Session update\n' });
   assert.match(batchItem, /# Horspowers Inbox Submission/u);
+
+  const semanticLogicalId = metadata();
+  semanticLogicalId.logical_id = 'external-docs-decision';
+  assert.doesNotThrow(() => renderInboxSubmission({ metadata: semanticLogicalId, proposedDocument: '# Proposal\n' }));
+
+  const readableProjectId = metadata();
+  readableProjectId.project_id = 'fixture/company-project';
+  assert.doesNotThrow(() => renderInboxSubmission({ metadata: readableProjectId, proposedDocument: '# Proposal\n' }));
 });
 
 test('rejects malformed submission metadata and payload framing before spawning a receiver', () => {
@@ -147,6 +158,33 @@ test('rejects malformed submission metadata and payload framing before spawning 
     () => renderInboxSubmission({ metadata: extraMetadata, proposedDocument: '# Proposal\n' }),
     /invalid inbox submission payload/u
   );
+
+  for (const [name, mutate] of [
+    ['high-entropy project ID', (value) => { value.project_id = 'fixture/aB3dE5fG7hJ9kLmNpQrStUvWxYz01234'; }],
+    ['hyphen-split high-entropy project ID', (value) => { value.project_id = 'fixture/abcdefghij-klmnopqrst-uvwxyz012345'; }],
+    ['slash-split high-entropy project ID', (value) => { value.project_id = 'fixture/abcdefghij/klmnopqrst/uvwxyz012345'; }],
+    ['two-path high-entropy project ID', (value) => { value.project_id = 'aB3dE5fG7hJ9kLm/NpQrStUvWxYz0123'; }],
+    ['dot-split high-entropy project ID', (value) => { value.project_id = 'fixture/abcdefghij.klmnopqrst.uvwxyz012345'; }],
+    ['low-entropy padded hyphen-split project ID', (value) => {
+      value.project_id = `fixture/${LOW_ENTROPY_IDENTIFIER_PADDING}-${OPAQUE_IDENTIFIER_SEGMENTS.join('-')}`;
+    }],
+    ['low-entropy padded slash-split project ID', (value) => {
+      value.project_id = `fixture/${LOW_ENTROPY_IDENTIFIER_PADDING}/${OPAQUE_IDENTIFIER_SEGMENTS.join('/')}`;
+    }],
+    ['low-entropy padded dot-split project ID', (value) => {
+      value.project_id = `fixture/${LOW_ENTROPY_IDENTIFIER_PADDING}.${OPAQUE_IDENTIFIER_SEGMENTS.join('.')}`;
+    }],
+    ['high-entropy logical ID', (value) => { value.logical_id = 'abcdefghijklmnopqrstuvwxyz0123456789'; }],
+    ['hyphen-split high-entropy logical ID', (value) => { value.logical_id = 'abcdefghij-klmnopqrst-uvwxyz012345'; }]
+  ]) {
+    const unsafeMetadata = metadata();
+    mutate(unsafeMetadata);
+    assert.throws(
+      () => renderInboxSubmission({ metadata: unsafeMetadata, proposedDocument: '# Proposal\n' }),
+      /invalid inbox submission payload/u,
+      name
+    );
+  }
 
   assert.throws(
     () => renderInboxSubmission({ metadata: metadata(), proposedDocument: '---\r\nforged: true\r\n' }),

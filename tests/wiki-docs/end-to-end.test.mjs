@@ -657,7 +657,7 @@ test('the one auto-submit policy governs every mutation and transitions preserve
   const afterConfigAdmission = await automatic.freshRuntime().execute({
     cwd: automatic.root,
     action: 'create',
-    request: automatic.createRequest('requires-confirmation-after-config-change')
+    request: automatic.createRequest('needs-confirmation')
   });
   assert.equal(afterConfigAdmission.status, 'confirmation_required');
   assert.deepEqual(
@@ -782,7 +782,7 @@ test('unsafe body carriers and failed Inbox delivery never fall back to local do
   const failed = await fixture.runtime.execute({
     cwd: fixture.root,
     action: 'create',
-    request: fixture.createRequest('inbox-transport-failure')
+    request: fixture.createRequest('transport-failure')
   });
   assert.equal(failed.status, 'submission_failed');
   assert.equal(failed.error_code, 'inbox_process_exit');

@@ -75,7 +75,7 @@ output=$(run_claude "Read $WRITING_PLANS_SKILL and $PLAN_REVIEW_PROMPT in the cu
 
 assert_contains "$output" "plan-document-reviewer-prompt\\.md" "writing-plans references the local plan reviewer prompt"
 assert_contains "$output" "local.*path\\|Wiki.*logical\\|logical.*ID\\|URI\\|runtime" "plan review accepts local or Wiki document references"
-assert_contains "$output" "complete.*plan.*body\\|complete.*design.*body\\|full.*plan\\|完整.*计划.*正文\\|完整.*设计.*正文" "plan reviewer receives complete plan and design bodies"
+assert_contains "$output" "complete.*plan.*body\\|complete.*design.*body\\|full.*plan\\|完整.*计划.*正文\\|完整.*设计.*正文\\|完整.*[Pp]lan.*正文\\|双方.*完整.*正文" "plan reviewer receives complete plan and design bodies"
 assert_contains "$output" "Issues Found\\|fix the plan first\\|re-run the review\\|Only continue when.*Approved\\|修复计划\\|重新运行.*审查\\|只有.*Approved.*继续" "plan review blocks execution until approved"
 
 echo ""

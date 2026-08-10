@@ -293,3 +293,67 @@ test('Wiki contexts construct only the Wiki backend and keep unavailable context
   assert.equal(unavailableResult.backend, 'disabled');
   assert.equal(localConstructed, 0);
 });
+
+test('preserves an explicitly redacted Wiki project ID from a backend failure', async () => {
+  const token = 'aB3dE5fG7hJ9kLmNpQrStUvWxYz01234';
+  const unsafeProjectId = `fixture/${token}`;
+  const runtime = new DocumentRuntime({
+    resolveProjectContext: async () => ({
+      status: 'ready',
+      project: { root: '/retained-fixture/company-project', project_id: unsafeProjectId },
+      config: { source: 'wiki', value: { project_id: unsafeProjectId } },
+      documentation: { enabled: true, backend: 'wiki' },
+      wiki: {
+        config_uri: 'qmd://my-code-wiki/projects/company/horspowers-config.md',
+        host_config: {
+          wiki: {
+            inbox: {
+              command: '/retained-fixture/wiki-inbox-submit',
+              timeout_ms: 1_000,
+              max_payload_bytes: 256 * 1024
+            }
+          }
+        },
+        qmd_client: { getExact: async () => ({ ok: false }) }
+      }
+    }),
+    InboxSubmitter: class {},
+    WikiDocsBackend: class {
+      async execute() {
+        return {
+          status: 'submission_safety_blocked',
+          backend: 'wiki',
+          project_id: null,
+          error_code: 'submission_safety_blocked'
+        };
+      }
+    }
+  });
+
+  const result = await runtime.execute({
+    cwd: '/retained-fixture/company-project', action: 'create', request: {}, confirmed: false
+  });
+
+  assert.equal(result.status, 'submission_safety_blocked');
+  assert.equal(result.error_code, 'submission_safety_blocked');
+  assert.equal(result.project_id, null);
+  assert.equal(JSON.stringify(result).includes(token), false);
+});
+
+test('redacts an unsafe project ID before backend selection returns a runtime result', async () => {
+  const token = 'aB3dE5fG7hJ9kLmNpQrStUvWxYz01234';
+  const runtime = new DocumentRuntime({
+    resolveProjectContext: async () => ({
+      status: 'ready',
+      project: { root: '/retained-fixture/company-project', project_id: `fixture/${token}` },
+      config: { source: 'wiki', value: null },
+      documentation: { enabled: false, backend: 'disabled' }
+    })
+  });
+
+  const result = await runtime.resolve('/retained-fixture/company-project');
+
+  assert.equal(result.status, 'documentation_disabled');
+  assert.equal(result.project_id, null);
+  assert.equal(JSON.stringify(result).includes(token), false);
+});
