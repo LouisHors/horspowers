@@ -64,6 +64,12 @@ creating a backup. If markers are duplicated, incomplete, or nested, repair
 them manually; Horspowers intentionally refuses to overwrite ambiguous user
 content.
 
+## 公司项目 Wiki 外置文档
+
+已确认的公司 Git 项目可从个人 Wiki 精确读取权威配置和已入库文档，并将所有文档变更投稿到 Inbox。它不会把公司项目的配置或 Horspowers `docs/` 写回仓库：Registry、qmd、SSH、manifest 或 Inbox 任一环节不可用时，文档持久化会安全停止而不会回退本地模式。
+
+宿主级 bootstrap 必须由用户人工安装；待审核投稿也不等于已入库。本机审核、Wiki 入库和 `qmd update` 仍由用户负责。机器块、唯一 `auto_submit` 开关、故障状态与只读 smoke 边界见 [公司项目 Wiki 外置配置与文档](wiki-external-documentation.md)。
+
 ## Usage
 
 Once installed, Codex can discover and use the skills directly. Typical usage
