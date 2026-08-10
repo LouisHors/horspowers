@@ -84,6 +84,16 @@ digraph brainstorming {
 ## The Process
 
 **Understanding the idea:**
+- Before the first clarifying question, collect bounded project context once for the current discussion topic. 无需为 qmd 单独询问：进入 brainstorming 即授权这项只读收集。
+- Build the collector JSON through the host's structured input or safe environment variable; never interpolate the user message into a shell command. The collector is stdin-only:
+  ```bash
+  printf '%s' "$HORSPOWERS_CONTEXT_INPUT" | \
+    node "<native-horspowers-root>/brainstorming/scripts/collect-context.mjs"
+  ```
+  Resolve `<native-horspowers-root>` from the host's native skill discovery metadata. If that path cannot be resolved, continue without collection rather than guessing a user-directory path.
+- Collector branches run Wiki/qmd, repository text/files, Git history, and known entry files in parallel. A failed branch does not block the other branches. It uses `rg -> git grep -> bounded grep`, `rg --files -> git ls-files -> find`, and qmd semantic query only after sparse keyword results.
+- Treat results as candidates, not automatic truth. Label questions and summaries as **仓库事实**、**Wiki 历史**、**用户已确认事实** or **Agent 推断**. When Wiki and repository evidence disagree, show both source paths and ask which baseline applies.
+- Reuse the result for the same topic. Only run an incremental collection when a new project, module, or factual gap appears. Never read files matched by the collector's sensitive-file rules.
 - Check out the current project state first (files, docs, recent commits)
 - Before asking detailed questions, assess scope. If the request contains multiple loosely coupled subsystems, decompose it before refining details.
 - If the request is too large for a single spec, break it into sub-projects and brainstorm the first one through the normal flow. Each sub-project gets its own spec -> plan -> implementation cycle.

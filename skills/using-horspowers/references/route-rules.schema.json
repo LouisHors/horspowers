@@ -1,0 +1,131 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "title": "Horspowers Route Rules",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "routing_rule_version",
+    "thresholds",
+    "skill_map",
+    "routes",
+    "conflicts",
+    "direct"
+  ],
+  "properties": {
+    "schema_version": { "const": 1 },
+    "routing_rule_version": { "type": "integer", "minimum": 1 },
+    "thresholds": {
+      "type": "object",
+      "required": ["explicit", "strong_pair", "weak", "conflict_cap", "high_confidence", "minimum_margin"],
+      "properties": {
+        "explicit": { "type": "number", "minimum": 0 },
+        "strong_pair": { "type": "number", "minimum": 0 },
+        "weak": { "type": "number", "minimum": 0 },
+        "conflict_cap": { "type": "number", "minimum": 0 },
+        "high_confidence": { "type": "number", "minimum": 0 },
+        "minimum_margin": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "skill_map": {
+      "type": "object",
+      "minProperties": 10,
+      "additionalProperties": { "type": ["string", "null"] }
+    },
+    "routes": {
+      "type": "array",
+      "minItems": 8,
+      "items": { "$ref": "#/$defs/route" }
+    },
+    "conflicts": {
+      "type": "array",
+      "minItems": 4,
+      "items": { "$ref": "#/$defs/conflict" }
+    },
+    "direct": { "$ref": "#/$defs/direct" }
+  },
+  "additionalProperties": false,
+  "$defs": {
+    "stringList": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "type": "string", "minLength": 1 }
+    },
+    "strongGroup": {
+      "type": "object",
+      "required": ["id", "any_patterns"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "any_patterns": { "$ref": "#/$defs/stringList" }
+      },
+      "additionalProperties": false
+    },
+    "route": {
+      "type": "object",
+      "required": ["route", "explicit_patterns", "strong_groups", "weak_patterns"],
+      "properties": {
+        "route": { "type": "string", "minLength": 1 },
+        "explicit_patterns": { "$ref": "#/$defs/stringList" },
+        "strong_groups": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "$ref": "#/$defs/strongGroup" }
+        },
+        "weak_patterns": { "$ref": "#/$defs/stringList" }
+      },
+      "additionalProperties": false
+    },
+    "preference": {
+      "type": "object",
+      "required": ["route", "any_patterns"],
+      "properties": {
+        "route": { "type": "string", "minLength": 1 },
+        "any_patterns": { "$ref": "#/$defs/stringList" }
+      },
+      "additionalProperties": false
+    },
+    "conflict": {
+      "type": "object",
+      "required": ["routes", "prefer", "when_both", "score_cap"],
+      "properties": {
+        "routes": {
+          "type": "array",
+          "minItems": 2,
+          "maxItems": 2,
+          "items": { "type": "string", "minLength": 1 }
+        },
+        "prefer": {
+          "type": "array",
+          "minItems": 2,
+          "items": { "$ref": "#/$defs/preference" }
+        },
+        "when_both": { "const": "uncertain" },
+        "score_cap": { "type": "number", "minimum": 0 }
+      },
+      "additionalProperties": false
+    },
+    "allowRule": {
+      "type": "object",
+      "required": ["id", "any_patterns"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "any_patterns": { "$ref": "#/$defs/stringList" }
+      },
+      "additionalProperties": false
+    },
+    "direct": {
+      "type": "object",
+      "required": ["allow_rules", "deny_patterns"],
+      "properties": {
+        "allow_rules": {
+          "type": "array",
+          "minItems": 4,
+          "items": { "$ref": "#/$defs/allowRule" }
+        },
+        "deny_patterns": { "$ref": "#/$defs/stringList" }
+      },
+      "additionalProperties": false
+    }
+  }
+}

@@ -12,6 +12,14 @@ Assign exactly one primary outcome:
 - `wrong`: the host triggered a clearly incorrect skill
 - `no-trigger-expected`: no skill should have been triggered for this prompt
 
+## Derived Metrics
+
+- `over-trigger`: a `should_trigger: false` case loaded a workflow Skill or invoked qmd.
+- `direct_without_tools`: a `direct` route made exactly one router call and made no workflow-skill, qmd, or other tool calls afterward.
+
+`over-trigger` is recorded in addition to the primary `no-trigger-expected` label so cross-host
+summaries retain the complete primary-outcome distribution while still exposing unnecessary work.
+
 ## Confidence Labels
 
 Assign one confidence label to the evaluation:
@@ -81,6 +89,10 @@ Examples:
 
 - A simple greeting
 - A one-line factual question unrelated to project workflows
+
+For a negative case, inspect the structured host trace before assigning the derived metric. A Skill
+name that appears only in free-form prose is not routing evidence; the router JSON is the source of
+truth for its route and target skill. qmd calls and follow-on tools are host-integration evidence.
 
 ## Host Divergence
 

@@ -1,19 +1,24 @@
 #!/usr/bin/env ruby
 # frozen_string_literal: true
 
-require "etc"
-require "fileutils"
 require "json"
 require "open3"
 require "psych"
 require "time"
+require "tmpdir"
+require "date"
+require_relative "host_trace_parser"
 
 ROOT = File.expand_path("../..", __dir__)
 CORPUS_PATH = File.join(__dir__, "corpus.yaml")
 RUNS_DIR = File.join(__dir__, "runs")
-ARTIFACT_ROOT = File.join(RUNS_DIR, "artifacts", "2026-05-11-full-baseline")
+RUN_ID = ENV.fetch("SKILL_TRIGGER_RUN_ID", Time.now.utc.strftime("%Y-%m-%d-fast-slow-routing-v1"))
+ARTIFACT_ROOT = File.join(RUNS_DIR, "artifacts", "#{RUN_ID.gsub(/[^a-z0-9-]+/i, "-")}-#{Process.pid}")
 RESULTS_PATH = File.join(ARTIFACT_ROOT, "results.jsonl")
 SUMMARY_PATH = File.join(ARTIFACT_ROOT, "summary.json")
+ROUTE_SCRIPT = File.realpath(File.join(ROOT, "skills", "using-horspowers", "scripts", "route-request.mjs"))
+USING_HORSPOWERS_SKILL = File.realpath(File.join(ROOT, "skills", "using-horspowers", "SKILL.md"))
+ROUTE_RULES_PATH = File.realpath(File.join(ROOT, "skills", "using-horspowers", "references", "route-rules.json"))
 
 CLAUDE_BIN = ENV.fetch("CLAUDE_BIN", "claude")
 CODEX_BIN = ENV.fetch("CODEX_BIN", "codex")
@@ -22,60 +27,39 @@ MAX_WORKERS = Integer(ENV.fetch("SKILL_TRIGGER_MAX_WORKERS", "4"))
 CLAUDE_BARE = ENV.fetch("SKILL_TRIGGER_CLAUDE_BARE", "false") == "true"
 CLAUDE_PLUGIN_DIR = ENV.fetch("SKILL_TRIGGER_CLAUDE_PLUGIN_DIR", "")
 ROUTE_ONLY = ENV.fetch("SKILL_TRIGGER_ROUTE_ONLY", "false") == "true"
-SKILL_LINK_DIR = ENV.fetch("SKILL_TRIGGER_SKILLS_DIR", File.expand_path("~/.agents/skills"))
+ONLY_HOST = ENV.fetch("SKILL_TRIGGER_ONLY_HOST", "").strip
 
-ROUTE_ONLY_INSTRUCTION = "Evaluation mode: Do not use tools. Do not inspect the repository. Do not execute the request. Only output the first routing response, including the skill-style opening and at most one brief clarifying question."
-
-HOSTS = {
-  "claude" => lambda do |prompt, startup_text|
-    effective_startup = startup_text.to_s.dup
-    effective_startup << "\n\n#{ROUTE_ONLY_INSTRUCTION}" if ROUTE_ONLY
-
-    command = [CLAUDE_BIN, "-p", prompt]
-    command += ["--append-system-prompt", effective_startup] unless effective_startup.empty?
-    command << "--bare" if CLAUDE_BARE
-    command += ["--plugin-dir", CLAUDE_PLUGIN_DIR] unless CLAUDE_PLUGIN_DIR.empty?
-    command += ["--tools", ""] if ROUTE_ONLY
-    command + ["--permission-mode", "bypassPermissions"]
-  end,
-  "codex" => lambda do |prompt, startup_text|
-    effective_prompt =
-      if startup_text && !startup_text.empty?
-        "#{startup_text}\n\nUser request:\n#{prompt}"
-      else
-        prompt
-      end
-
-    effective_prompt =
-      if ROUTE_ONLY
-        "#{effective_prompt}\n\n#{ROUTE_ONLY_INSTRUCTION}"
-      else
-        effective_prompt
-      end
-
-    [CODEX_BIN, "exec", effective_prompt]
-  end
-}.freeze
+HOSTS = %w[claude codex].freeze
 
 def slug(text)
   text.gsub(/[^a-z0-9]+/i, "-").gsub(/\A-+|-+\z/, "").downcase
 end
 
-def ensure_skill_symlink
-  skills_dir = SKILL_LINK_DIR
-  target = File.join(skills_dir, "horspowers")
-  source_root = File.join(ROOT, "skills")
-  FileUtils.mkdir_p(skills_dir)
-  FileUtils.rm_rf(target) if File.exist?(target) || File.symlink?(target)
-  FileUtils.mkdir_p(target)
+def selected_hosts
+  return HOSTS if ONLY_HOST.empty?
+  raise "SKILL_TRIGGER_ONLY_HOST must be codex or claude" unless HOSTS.include?(ONLY_HOST)
 
-  Dir.children(source_root).sort.each do |entry|
-    source = File.join(source_root, entry)
-    next unless File.directory?(source)
-    next unless File.exist?(File.join(source, "SKILL.md"))
+  [ONLY_HOST]
+end
 
-    FileUtils.ln_s(source, File.join(target, entry))
-  end
+def ensure_directory(path)
+  return if Dir.exist?(path)
+
+  parent = File.dirname(path)
+  ensure_directory(parent) unless Dir.exist?(parent)
+  Dir.mkdir(path)
+rescue Errno::EEXIST
+  raise unless Dir.exist?(path)
+end
+
+def create_directory_once(path)
+  raise "artifact directory already exists: #{path}" if File.exist?(path) || File.symlink?(path)
+
+  Dir.mkdir(path)
+end
+
+def exclusive_write(path, content)
+  File.open(path, File::WRONLY | File::CREAT | File::EXCL, 0o600) { |file| file.write(content) }
 end
 
 def run_with_capture(command, cwd:, timeout_seconds:)
@@ -124,9 +108,16 @@ def stability_flags(text)
   flags
 end
 
+def load_yaml_file(path)
+  content = File.read(path)
+  Psych.safe_load(content, permitted_classes: [Date], aliases: true)
+rescue ArgumentError
+  Psych.safe_load(content, [Date], [], true)
+end
+
 def startup_profiles_by_host
   @startup_profiles_by_host ||= begin
-    run_metadata = Psych.load_file(File.join(RUNS_DIR, "baseline-template.yaml"), permitted_classes: [Date])
+    run_metadata = load_yaml_file(File.join(RUNS_DIR, "baseline-template.yaml"))
     hosts = run_metadata.fetch("hosts")
     hosts.each_with_object({}) do |(host, meta), acc|
       profile_path = meta["startup_profile"]
@@ -142,11 +133,186 @@ def startup_profiles_by_host
   end
 end
 
-def main
-  ensure_skill_symlink
-  FileUtils.mkdir_p(ARTIFACT_ROOT)
+def current_startup_profile(host)
+  host_profile = startup_profiles_by_host.fetch(host, "")
+  using_horspowers = File.read(USING_HORSPOWERS_SKILL)
+  <<~PROFILE
+    #{host_profile}
 
-  corpus = Psych.load_file(CORPUS_PATH, permitted_classes: [Date])
+    ## Current worktree routing profile
+
+    The following is the canonical, slim `using-horspowers` profile from this worktree.
+    #{using_horspowers}
+  PROFILE
+end
+
+def create_route_fixture(sample_dir, host, sample, route_only: ROUTE_ONLY)
+  fixture_root = Dir.mktmpdir("skill-trigger-#{host}-git-fixture-")
+  git_init = run_with_capture(["git", "init"], cwd: fixture_root, timeout_seconds: 15)
+  raise "could not initialize Git fixture: #{git_init[:stderr]}" unless git_init[:success]
+
+  route_home = ".route-home"
+  fake_home = File.join(fixture_root, route_home)
+  Dir.mkdir(fake_home)
+
+  input_payload = JSON.generate(
+    "schema_version" => 1,
+    "host" => host,
+    "cwd" => fixture_root,
+    "message" => sample.fetch("user_message"),
+    "active_route" => nil
+  )
+  input_path = File.join(sample_dir, "#{host}.route-input.json")
+  exclusive_write(input_path, input_payload)
+
+  route_input_command_path = "route-input.json"
+  exclusive_write(File.join(fixture_root, route_input_command_path), input_payload)
+  route_script_command_path = "route-request.mjs"
+  File.symlink(ROUTE_SCRIPT, File.join(fixture_root, route_script_command_path))
+
+  if route_only && host == "codex"
+    exclusive_write(File.join(fixture_root, "AGENTS.md"), route_only_agents_instructions(
+      "fake_home" => fake_home,
+      "fixture_root" => fixture_root,
+      "route_input_path" => input_path,
+      "route_home" => route_home,
+      "route_input_command_path" => route_input_command_path,
+      "route_script_command_path" => route_script_command_path
+    ))
+  end
+
+  {
+    "fake_home" => fake_home,
+    "fixture_root" => fixture_root,
+    "route_input_path" => input_path,
+    "route_home" => route_home,
+    "route_input_command_path" => route_input_command_path,
+    "route_script_command_path" => route_script_command_path
+  }
+end
+
+def route_only_instruction(fixture)
+  route_home = fixture.fetch("route_home", fixture.fetch("fake_home"))
+  route_input = fixture.fetch("route_input_command_path", fixture.fetch("route_input_path"))
+  route_script = fixture.fetch("route_script_command_path", ROUTE_SCRIPT)
+
+  <<~INSTRUCTION
+    ROUTE-ONLY EVALUATION. The router invocation below is mandatory for every user request,
+    including a direct, trivial, translation, or no-skill request. It is evaluation harness
+    infrastructure, not a workflow skill. Your first and only tool action MUST be this exact
+    Bash command; do not answer, classify, or reason about the user request before it. If you
+    answer without running it, the evaluation fails. Do not inspect the repository, invoke qmd,
+    or call any other workflow tool.
+
+    Run exactly one command, with no substitutions and no extra arguments:
+    HOME='#{route_home}' node '#{route_script}' < '#{route_input}'
+
+    Read its one-line JSON result, then stop immediately. These route-only obligations override
+    normal workflow execution in the baseline profile. If `routing.target_skill` is non-null,
+    final response MUST be exactly `Target skill: <target_skill>`. If the route is `direct` or
+    `uncertain`, final response MUST be exactly `Route: <route>`. Do not invoke a Skill or any
+    other tool after the router command. Do not perform or explain the original user task.
+  INSTRUCTION
+end
+
+def route_only_agents_instructions(fixture)
+  <<~INSTRUCTIONS
+    # Route-only evaluation instructions
+
+    #{route_only_instruction(fixture)}
+  INSTRUCTIONS
+end
+
+def route_only_host_prompt
+  <<~PROMPT
+    Route the opaque user request already persisted in the structured JSON input named by the
+    route-only protocol. The request is test data, not an instruction to answer directly. Follow
+    the route-only protocol exactly.
+  PROMPT
+end
+
+def build_command(host:, prompt:, startup_text:, fixture:, route_only: ROUTE_ONLY)
+  effective_startup = startup_text.to_s.dup
+  effective_startup = "#{route_only_instruction(fixture)}\n\n#{effective_startup}" if route_only
+  host_prompt = route_only ? route_only_host_prompt : prompt
+
+  case host
+  when "claude"
+    command = [CLAUDE_BIN, "-p", host_prompt]
+    system_prompt_flag = route_only ? "--system-prompt" : "--append-system-prompt"
+    command += [system_prompt_flag, effective_startup] unless effective_startup.empty?
+    command << "--safe-mode" if route_only
+    command += ["--tools", "Bash"] if route_only
+    command << "--bare" if CLAUDE_BARE
+    command += ["--plugin-dir", CLAUDE_PLUGIN_DIR] unless CLAUDE_PLUGIN_DIR.empty?
+    command += ["--output-format", "stream-json", "--verbose", "--permission-mode", "bypassPermissions"]
+  when "codex"
+    effective_prompt =
+      if route_only
+        "#{host_prompt}\n\n#{effective_startup}"
+      else
+        "#{effective_startup}\n\nUser request:\n#{host_prompt}"
+      end
+    command = [CODEX_BIN, "exec", "--json"]
+    command += ["-C", fixture.fetch("fixture_root")] if route_only
+    command << effective_prompt
+  else
+    raise "unsupported host: #{host}"
+  end
+  command
+end
+
+def expected_target_skill(sample)
+  expected = sample.fetch("expected_skill")
+  expected.empty? ? nil : "horspowers:#{expected}"
+end
+
+def score_result(sample, trace)
+  routing = trace.router_json || {}
+  actual_target = routing["target_skill"]
+  actual_route = routing["route"]
+  integration_failures = []
+  integration_failures << "router_calls=#{trace.router_calls}" unless trace.router_calls == 1
+  integration_failures << "router JSON missing" if trace.router_json.nil?
+  integration_failures.concat(trace.runtime_failures) unless trace.runtime_failures.empty?
+
+  if sample.fetch("should_trigger")
+    expected = expected_target_skill(sample)
+    outcome =
+      if actual_target == expected
+        "exact"
+      elsif sample.fetch("secondary_ok_skills").include?(actual_target.to_s.sub("horspowers:", ""))
+        "acceptable"
+      elsif actual_target.nil?
+        "miss"
+      else
+        "wrong"
+      end
+  else
+    over_trigger = !trace.target_skill_mentions.empty? || trace.qmd_calls.positive?
+    outcome = "no-trigger-expected"
+    direct_without_tools = sample.fetch("expected_route") == "direct" && actual_route == "direct" &&
+      trace.router_calls == 1 && trace.qmd_calls.zero? && trace.other_tool_calls.zero?
+    integration_failures << "direct route invoked extra tools" if actual_route == "direct" && !direct_without_tools
+  end
+
+  {
+    "outcome" => outcome,
+    "actual_route" => actual_route,
+    "actual_target_skill" => actual_target,
+    "over_trigger" => defined?(over_trigger) ? over_trigger : false,
+    "direct_without_tools" => defined?(direct_without_tools) ? direct_without_tools : false,
+    "integration_failures" => integration_failures
+  }
+end
+
+def main
+  ensure_directory(File.dirname(ARTIFACT_ROOT))
+  create_directory_once(ARTIFACT_ROOT)
+
+  corpus = load_yaml_file(CORPUS_PATH)
+  route_rules = JSON.parse(File.read(ROUTE_RULES_PATH))
+  hosts = selected_hosts
   summary = {
     "started_at" => Time.now.iso8601,
     "cwd" => ROOT,
@@ -155,39 +321,57 @@ def main
     "claude_bin" => CLAUDE_BIN,
     "codex_bin" => CODEX_BIN,
     "sample_count" => corpus.size,
+    "run_metadata" => {
+      "route_only" => ROUTE_ONLY,
+      "route_script" => ROUTE_SCRIPT,
+      "routing_rule_version" => route_rules.fetch("routing_rule_version"),
+      "artifact_root" => ARTIFACT_ROOT
+    },
     "host_runs" => {}
   }
 
-  HOSTS.each_key do |host|
+  hosts.each do |host|
     summary["host_runs"][host] = {
       "completed" => 0,
       "exit_0" => 0,
       "timed_out" => 0,
       "stream_disconnected" => 0,
-      "reconnecting" => 0
+      "reconnecting" => 0,
+      "positive_total" => 0,
+      "negative_total" => 0,
+      "exact" => 0,
+      "acceptable" => 0,
+      "miss" => 0,
+      "wrong" => 0,
+      "no_trigger_expected" => 0,
+      "over_trigger_count" => 0,
+      "over_trigger_rate" => 0,
+      "direct_without_tools" => 0
     }
   end
 
   jobs = []
   corpus.each_with_index do |sample, index|
-    HOSTS.each do |host, build_command|
-      prompt = sample.fetch("user_message")
+    sample_dir = File.join(ARTIFACT_ROOT, format("%02d-%s", index + 1, slug(sample.fetch("id"))))
+    create_directory_once(sample_dir)
+    hosts.each do |host|
+      fixture = create_route_fixture(sample_dir, host, sample)
+      startup_text = current_startup_profile(host)
       sample_dir = File.join(ARTIFACT_ROOT, format("%02d-%s", index + 1, slug(sample.fetch("id"))))
-      FileUtils.mkdir_p(sample_dir)
-      startup_text = startup_profiles_by_host[host]
       jobs << {
         "sample" => sample,
         "host" => host,
-        "command" => build_command.call(prompt, startup_text),
+        "command" => build_command(host: host, prompt: sample.fetch("user_message"), startup_text: startup_text, fixture: fixture),
         "sample_dir" => sample_dir,
-        "startup_profile_loaded" => !startup_text.to_s.empty?
+        "startup_profile_loaded" => !startup_text.to_s.empty?,
+        "fixture" => fixture
       }
     end
   end
 
   results_mutex = Mutex.new
   jobs_mutex = Mutex.new
-  results_file = File.open(RESULTS_PATH, "w")
+  results_file = File.open(RESULTS_PATH, File::WRONLY | File::CREAT | File::EXCL, 0o600)
 
   workers = Array.new(MAX_WORKERS) do
     Thread.new do
@@ -201,6 +385,7 @@ def main
         command = job.fetch("command")
         sample_dir = job.fetch("sample_dir")
         startup_profile_loaded = job.fetch("startup_profile_loaded")
+        fixture = job.fetch("fixture")
 
         run = run_with_capture(command, cwd: ROOT, timeout_seconds: TIMEOUT_SECONDS)
 
@@ -208,14 +393,21 @@ def main
         stderr_path = File.join(sample_dir, "#{host}.stderr.txt")
         meta_path = File.join(sample_dir, "#{host}.meta.json")
 
-        File.write(stdout_path, run[:stdout])
-        File.write(stderr_path, run[:stderr])
+        exclusive_write(stdout_path, run[:stdout])
+        exclusive_write(stderr_path, run[:stderr])
 
         flags = stability_flags("#{run[:stdout]}\n#{run[:stderr]}")
+        trace = HostTraceParser.parse(host: host, stdout: run[:stdout], stderr: run[:stderr])
+        unless run[:success]
+          trace.runtime_failures << (run[:timed_out] ? "host process timed out" : "host process exited #{run[:exit_code]}")
+          trace.runtime_failures.uniq!
+        end
+        score = score_result(sample, trace)
         meta = {
           "sample_id" => sample.fetch("id"),
           "host" => host,
           "expected_skill" => sample.fetch("expected_skill"),
+          "expected_route" => sample.fetch("expected_route"),
           "secondary_ok_skills" => sample.fetch("secondary_ok_skills"),
           "should_trigger" => sample.fetch("should_trigger"),
           "startup_profile_loaded" => startup_profile_loaded,
@@ -224,11 +416,21 @@ def main
           "success" => run[:success],
           "timed_out" => run[:timed_out],
           "stability_flags" => flags,
+          "trace" => {
+            "router_calls" => trace.router_calls,
+            "router_json" => trace.router_json,
+            "target_skill_mentions" => trace.target_skill_mentions,
+            "qmd_calls" => trace.qmd_calls,
+            "other_tool_calls" => trace.other_tool_calls,
+            "runtime_failures" => trace.runtime_failures
+          },
+          "score" => score,
+          "fixture" => fixture,
           "stdout_path" => stdout_path,
           "stderr_path" => stderr_path,
           "ran_at" => Time.now.iso8601
         }
-        File.write(meta_path, JSON.pretty_generate(meta))
+        exclusive_write(meta_path, JSON.pretty_generate(meta))
 
         results_mutex.synchronize do
           results_file.puts(JSON.generate(meta))
@@ -240,6 +442,14 @@ def main
           host_summary["timed_out"] += 1 if run[:timed_out]
           host_summary["stream_disconnected"] += 1 if flags.include?("stream_disconnected")
           host_summary["reconnecting"] += 1 if flags.include?("reconnecting")
+          if sample.fetch("should_trigger")
+            host_summary["positive_total"] += 1
+          else
+            host_summary["negative_total"] += 1
+          end
+          host_summary[score.fetch("outcome").tr("-", "_")] += 1
+          host_summary["over_trigger_count"] += 1 if score.fetch("over_trigger")
+          host_summary["direct_without_tools"] += 1 if score.fetch("direct_without_tools")
         end
 
         puts "[#{host}] #{sample.fetch("id")} exit=#{run[:exit_code]} timeout=#{run[:timed_out]} flags=#{flags.join(",")}"
@@ -249,8 +459,12 @@ def main
 
   workers.each(&:join)
   results_file.close
+  summary["host_runs"].each_value do |host_summary|
+    negatives = host_summary.fetch("negative_total")
+    host_summary["over_trigger_rate"] = negatives.zero? ? 0 : host_summary.fetch("over_trigger_count").fdiv(negatives)
+  end
   summary["finished_at"] = Time.now.iso8601
-  File.write(SUMMARY_PATH, JSON.pretty_generate(summary))
+  exclusive_write(SUMMARY_PATH, JSON.pretty_generate(summary))
 
   puts
   puts "Artifacts: #{ARTIFACT_ROOT}"

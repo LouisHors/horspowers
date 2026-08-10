@@ -60,6 +60,15 @@ Codex should discover Horspowers through:
 The legacy `.codex/superpowers-codex` CLI remains available for compatibility,
 but it is not the primary path.
 
+## Fast/Slow Router
+
+Native discovery is the first-install entrypoint. Once `using-horspowers` is
+loaded, resolve only the documented local `route-request.mjs` path and pass the
+user message as structured stdin. Consume its single high-confidence
+`target_skill` directly; use the returned `candidates` only for an `uncertain`
+result. Do not run qmd or other workflow discovery before a `direct` result is
+handled.
+
 ## Worktree / Finishing Skills
 
 When a skill needs to reason about worktrees or branch state, use read-only git

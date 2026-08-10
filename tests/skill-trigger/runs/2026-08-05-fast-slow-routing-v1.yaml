@@ -1,0 +1,96 @@
+---
+run_id: 2026-08-05-fast-slow-routing-v1
+date: 2026-08-05
+purpose: Final non-destructive route-only acceptance for deterministic fast/slow workflow routing. Both hosts received opaque user input through retained JSON artifacts; the hosts, rather than the runner, invoked route-request.mjs.
+
+implementation:
+  commit: b79be82aeb12a26ce455667da3b37b1973e1f911
+  router_version: 1
+  routing_rule_version: 1
+  route_script: skills/using-horspowers/scripts/route-request.mjs
+
+corpus:
+  source: tests/skill-trigger/corpus.yaml
+  sample_count: 72
+  positive_total: 48
+  negative_total: 24
+
+hosts:
+  codex:
+    binary: codex-cli 0.146.0
+    model: default model not emitted by codex exec trace
+    startup_profile: tests/skill-trigger/codex/startup-v1.md plus current worktree using-horspowers profile
+    route_only: true
+    artifact: tests/skill-trigger/runs/artifacts/2026-08-05-fast-slow-routing-v1-codex-opaque-fixture-final-39064
+    fixture_local_router_commands: 72
+    nonlocal_router_commands: 0
+  claude:
+    binary: Claude Code 2.1.222
+    model: default model not emitted by Claude stream trace
+    startup_profile: tests/skill-trigger/claude/startup-v1.md plus current worktree using-horspowers profile
+    route_only: true
+    artifact: tests/skill-trigger/runs/artifacts/2026-08-05-fast-slow-routing-v1-claude-opaque-final-31876
+
+summary:
+  codex:
+    completed: 72
+    exit_0: 72
+    exact: 48
+    acceptable: 0
+    miss: 0
+    wrong: 0
+    no_trigger_expected: 24
+    over_trigger_count: 0
+    over_trigger_rate: 0.0
+    direct_without_tools: 16
+    router_calls_not_one: 0
+    extra_tool_calls: 0
+    runtime_failures: 0
+    integration_failures: 0
+  claude:
+    completed: 72
+    exit_0: 72
+    exact: 48
+    acceptable: 0
+    miss: 0
+    wrong: 0
+    no_trigger_expected: 24
+    over_trigger_count: 0
+    over_trigger_rate: 0.0
+    direct_without_tools: 16
+    router_calls_not_one: 0
+    extra_tool_calls: 0
+    runtime_failures: 0
+    integration_failures: 0
+
+latency:
+  command: node tests/workflow-router/benchmark.mjs
+  iterations: 100
+  milliseconds:
+    p50: 50.119
+    p95: 57.375
+    max: 59.544
+  environment:
+    os: darwin arm64
+    cpu: Apple M5
+    node: v26.3.0
+
+verification:
+  - node --test tests/workflow-router/*.test.mjs: 38 passed
+  - node --test tests/context-collector/*.test.mjs: 11 passed
+  - node tests/skill-trigger/scripts/evaluate_router.mjs: 48 exact, 24 negative, 0 over-trigger
+  - node tests/workflow-router/benchmark.mjs: p95 57.375ms, below 150ms
+  - ruby tests/skill-trigger/test_host_trace_parser.rb: 8 passed
+  - ruby tests/skill-trigger/test_run_full_baseline.rb: 8 passed
+  - git diff --check: passed before run-record edits
+
+legacy_suites:
+  codex_compatibility: not_run_user_did_not_authorize_cleanup
+  claude_smoke: not_run_user_did_not_authorize_cleanup
+  claude_brainstorming_full: not_run_user_did_not_authorize_cleanup
+  docs_system_integration: not_run_user_did_not_authorize_cleanup
+  workflow_integration: not_run_user_did_not_authorize_cleanup
+
+notes:
+  - Every retained host artifact has featured_plugin_sync_failed in stability_flags; all host processes exited 0 and the trace parser found no runtime failure.
+  - The final Codex run uses the fixture-local short invocation HOME=.route-home node route-request.mjs < route-input.json, avoiding long absolute command transcription while the host still executes the real router script.

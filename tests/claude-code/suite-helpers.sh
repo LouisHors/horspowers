@@ -55,6 +55,8 @@ suite_tests() {
         smoke)
             cat <<'EOF'
 test-brainstorming-smoke.sh
+test-fast-slow-routing.sh
+test-brainstorming-context.sh
 test-writing-plans-smoke.sh
 test-tdd-smoke.sh
 test-systematic-debugging-smoke.sh
@@ -85,7 +87,7 @@ EOF
 
 estimate_for_test() {
     case "${1:-}" in
-        test-brainstorming-smoke.sh|test-writing-plans-smoke.sh|test-tdd-smoke.sh|test-systematic-debugging-smoke.sh)
+        test-brainstorming-smoke.sh|test-fast-slow-routing.sh|test-brainstorming-context.sh|test-writing-plans-smoke.sh|test-tdd-smoke.sh|test-systematic-debugging-smoke.sh)
             echo 60
             ;;
         test-subagent-driven-development-smoke.sh)
