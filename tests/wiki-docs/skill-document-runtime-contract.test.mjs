@@ -154,6 +154,8 @@ function createNodeFsBindings() {
   return {
     modules: new Set(),
     promises: new Set(),
+    dynamicModules: new Set(),
+    possibleModules: new Set(),
     dynamicProperties: new Set(),
     methods: new Map()
   };
@@ -162,6 +164,8 @@ function createNodeFsBindings() {
 function addNodeFsBinding(bindings, name, descriptor) {
   if (descriptor === 'module') return addToSet(bindings.modules, name);
   if (descriptor === 'promises') return addToSet(bindings.promises, name);
+  if (descriptor === 'dynamic-module') return addToSet(bindings.dynamicModules, name);
+  if (descriptor === 'possible-module') return addToSet(bindings.possibleModules, name);
   if (descriptor === 'dynamic-property') return addToSet(bindings.dynamicProperties, name);
   if (!descriptor.startsWith('method:')) return false;
 
@@ -176,6 +180,8 @@ function descriptorsForNodeFsBinding(bindings, name) {
   const descriptors = [];
   if (bindings.modules.has(name)) descriptors.push('module');
   if (bindings.promises.has(name)) descriptors.push('promises');
+  if (bindings.dynamicModules.has(name)) descriptors.push('dynamic-module');
+  if (bindings.possibleModules.has(name)) descriptors.push('possible-module');
   if (bindings.dynamicProperties.has(name)) descriptors.push('dynamic-property');
   for (const method of bindings.methods.get(name) || []) descriptors.push(`method:${method}`);
   return descriptors;
@@ -328,8 +334,13 @@ function resolveNodeFsDescriptors(descriptors, properties) {
     for (const descriptor of resolved) {
       if (descriptor === 'dynamic-property' || property === dynamicNodeFsProperty) next.add('dynamic-property');
       else if (descriptor === 'module' && property === 'promises') next.add('promises');
+      else if ((descriptor === 'dynamic-module' || descriptor === 'possible-module') && property === 'promises') {
+        next.add(descriptor);
+      }
       else if ((descriptor === 'module' || descriptor === 'promises') && isNodeFsMutationMethod(property)) {
         next.add(`method:${property}`);
+      } else if ((descriptor === 'dynamic-module' || descriptor === 'possible-module') && isNodeFsMutationMethod(property)) {
+        next.add('dynamic-property');
       }
     }
     resolved = next;
@@ -338,18 +349,79 @@ function resolveNodeFsDescriptors(descriptors, properties) {
   return [...resolved];
 }
 
+function parseStaticStringLiteral(expression) {
+  const match = /^(?:"([^"\\]*)"|'([^'\\]*)')$/u.exec(expression.trim());
+  return match ? (match[1] ?? match[2]) : null;
+}
+
+function parseNodeFsLoaderExpression(expression) {
+  const loader = /^(?:await\s+)?(require|import)\s*\(/u.exec(expression);
+  if (!loader) return null;
+
+  const opening = loader[0].lastIndexOf('(');
+  const end = findMatchingDelimiter(expression, opening, '(', ')');
+  if (end === -1) return null;
+
+  const [source] = splitTopLevel(expression.slice(opening + 1, end));
+  const staticSpecifier = parseStaticStringLiteral(source || '');
+  const tail = expression.slice(end + 1);
+  if (staticSpecifier && new RegExp(`^${nodeFsModuleSpecifierPattern}$`, 'u').test(staticSpecifier)) {
+    return {
+      descriptors: [loader[1] === 'import'
+        ? 'dynamic-module'
+        : (staticSpecifier.endsWith('/promises') ? 'promises' : 'module')],
+      tail
+    };
+  }
+  return {
+    descriptors: staticSpecifier === null ? ['possible-module'] : [],
+    tail
+  };
+}
+
+function parseReflectGetExpression(expression) {
+  const match = /^Reflect\s*\.\s*get\s*\(/u.exec(expression);
+  if (!match) return null;
+
+  const opening = match[0].lastIndexOf('(');
+  const end = findMatchingDelimiter(expression, opening, '(', ')');
+  if (end === -1) return null;
+
+  const [target, property] = splitTopLevel(expression.slice(opening + 1, end));
+  if (!target || !property) return null;
+  return {
+    target,
+    property: parseStaticStringLiteral(property) ?? dynamicNodeFsProperty,
+    tail: expression.slice(end + 1)
+  };
+}
+
+function resolveNodeFsProperties(descriptors, properties) {
+  const resolved = resolveNodeFsDescriptors(descriptors, properties);
+  if (resolved.length > 0 || properties.length === 0) return resolved;
+  const wrapper = properties.at(-1);
+  if (!['apply', 'bind', 'call'].includes(wrapper)) return resolved;
+  return resolveNodeFsDescriptors(descriptors, properties.slice(0, -1));
+}
+
 function resolveNodeFsExpression(expression, bindings) {
   const trimmed = expression.trim();
-  const requireMatch = new RegExp(
-    String.raw`^require\(\s*['"](${nodeFsModuleSpecifierPattern})['"]\s*\)([\s\S]*)$`,
-    'u'
-  ).exec(trimmed);
+  const reflect = parseReflectGetExpression(trimmed);
+  if (reflect) {
+    const sourceDescriptors = resolveNodeFsExpression(reflect.target, bindings);
+    const tail = parseNodeFsPropertyPath(reflect.tail);
+    if (!tail) return [];
+    return resolveNodeFsProperties(sourceDescriptors, [reflect.property, ...tail])
+      .map((descriptor) => descriptor.startsWith('method:') ? 'dynamic-property' : descriptor);
+  }
+
+  const loader = parseNodeFsLoaderExpression(trimmed);
   let descriptors;
   let tail;
 
-  if (requireMatch) {
-    descriptors = [requireMatch[1].endsWith('/promises') ? 'promises' : 'module'];
-    tail = requireMatch[2];
+  if (loader) {
+    descriptors = loader.descriptors;
+    tail = loader.tail;
   } else {
     const bindingMatch = new RegExp(`^(${identifierPattern})([\\s\\S]*)$`, 'u').exec(trimmed);
     if (!bindingMatch) return [];
@@ -359,11 +431,7 @@ function resolveNodeFsExpression(expression, bindings) {
 
   const properties = parseNodeFsPropertyPath(tail);
   if (!properties) return [];
-  const resolved = resolveNodeFsDescriptors(descriptors, properties);
-  if (resolved.length > 0 || properties.length === 0) return resolved;
-  const wrapper = properties.at(-1);
-  if (!['apply', 'bind', 'call'].includes(wrapper)) return resolved;
-  return resolveNodeFsDescriptors(descriptors, properties.slice(0, -1));
+  return resolveNodeFsProperties(descriptors, properties);
 }
 
 function readDeclarationExpression(source, start) {
@@ -489,6 +557,13 @@ function collectNodeFsBindings(content) {
   return bindings;
 }
 
+function addNodeFsMutationOperationIds(operationIds, descriptors) {
+  for (const descriptor of descriptors) {
+    if (descriptor.startsWith('method:')) operationIds.add(`node-fs-mutation:${descriptor.slice('method:'.length)}`);
+    if (descriptor === 'dynamic-property') operationIds.add('node-fs-mutation:dynamic-property');
+  }
+}
+
 function nodeFsMutationOperations(content) {
   const bindings = collectNodeFsBindings(content);
   const accessor = String.raw`(?:(?:\.|\?\.)\s*${identifierPattern}|(?:\?\.)?\s*\[[^\]\r\n]*\])`;
@@ -499,10 +574,17 @@ function nodeFsMutationOperations(content) {
   const operationIds = new Set();
 
   for (const match of content.matchAll(invocationPattern)) {
-    for (const descriptor of resolveNodeFsExpression(match[1], bindings)) {
-      if (descriptor.startsWith('method:')) operationIds.add(`node-fs-mutation:${descriptor.slice('method:'.length)}`);
-      if (descriptor === 'dynamic-property') operationIds.add('node-fs-mutation:dynamic-property');
-    }
+    addNodeFsMutationOperationIds(operationIds, resolveNodeFsExpression(match[1], bindings));
+  }
+
+  const reflectGetPattern = /\bReflect\s*\.\s*get\s*\(/gu;
+  for (const match of content.matchAll(reflectGetPattern)) {
+    const opening = match.index + match[0].lastIndexOf('(');
+    const end = findMatchingDelimiter(content, opening, '(', ')');
+    if (end === -1) continue;
+    const invocation = content.slice(end + 1);
+    if (!/^\s*(?:(?:\?\.)?\s*\(|(?:\.|\?\.)\s*(?:apply|bind|call)\s*\()/u.test(invocation)) continue;
+    addNodeFsMutationOperationIds(operationIds, resolveNodeFsExpression(content.slice(match.index, end + 1), bindings));
   }
   return [...operationIds].sort();
 }
@@ -726,6 +808,60 @@ test('audit fails closed on dynamic Node fs properties and their aliases', () =>
       'node-fs-mutation:dynamic-property'
     ]));
   }
+
+  assert.equal(
+    temporaryLegacyDocumentExceptions.get('hooks/session-end.sh').operationIds.has('node-fs-mutation:dynamic-property'),
+    false
+  );
+});
+
+test('audit fails closed on dynamic module loading and Reflect fs access without flagging unrelated modules', () => {
+  const dynamicCases = [
+    [
+      "const disk = await import('node:fs');",
+      "disk.writeFileSync(record.target, 'unsafe');"
+    ].join('\n'),
+    [
+      "const disk = require('node:' + 'fs');",
+      "disk.writeFileSync(record.target, 'unsafe');"
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'Reflect.get(disk, method)(record.target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      "Reflect.get(disk, 'writeFileSync')(record.target, content);"
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'const persist = Reflect.get(disk, method);',
+      'const retryPersist = persist;',
+      'retryPersist(record.target, content);'
+    ].join('\n'),
+    [
+      'const disk = require(moduleSpecifier);',
+      "disk.writeFileSync(record.target, 'unsafe');"
+    ].join('\n'),
+    [
+      'const disk = await import(moduleSpecifier);',
+      "disk.writeFileSync(record.target, 'unsafe');"
+    ].join('\n')
+  ];
+
+  for (const [index, content] of dynamicCases.entries()) {
+    assert.deepEqual(new Set(legacyDocumentOperations(content)), new Set([
+      'node-fs-mutation:dynamic-property'
+    ]), `dynamic case ${index}`);
+  }
+
+  const unrelatedDynamicModule = [
+    'const plugin = require(moduleSpecifier);',
+    'plugin.run(record);',
+    'const renderer = await import(rendererSpecifier);',
+    'renderer.render(record);'
+  ].join('\n');
+  assert.deepEqual(legacyDocumentOperations(unrelatedDynamicModule), []);
 
   assert.equal(
     temporaryLegacyDocumentExceptions.get('hooks/session-end.sh').operationIds.has('node-fs-mutation:dynamic-property'),
