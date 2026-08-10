@@ -24,6 +24,17 @@ test('normalizes domain, IP, SSH and HTTPS clones to one company repository', ()
   assert.equal(identities[0].canonical_repository, 'ugnas-gitlab/platform/ugcli-lib');
 });
 
+test('normalizes SCP-style query and fragment clones to the SSH and HTTPS fingerprint', () => {
+  const identities = [
+    'git@gitlab.ugnas.com:platform/ugcli-lib.git?ref=main#readme',
+    'ssh://git@gitlab.ugnas.com/platform/ugcli-lib.git?ref=main#readme',
+    'https://gitlab.ugnas.com/platform/ugcli-lib.git?ref=main#readme'
+  ].map((url) => classifyRepositoryRemotes([{ name: 'origin', url }]));
+
+  assert.equal(new Set(identities.map((item) => item.project_fingerprint)).size, 1);
+  assert.equal(identities[0].canonical_repository, 'ugnas-gitlab/platform/ugcli-lib');
+});
+
 test('requires exact trusted host matching', () => {
   for (const url of [
     'https://gitlab.ugnas.com.evil.example/platform/ugcli-lib.git',
@@ -79,6 +90,23 @@ test('fails closed when a trusted company host has no repository path', () => {
   );
 });
 
+test('fails closed when an incomplete trusted remote accompanies a valid company remote', () => {
+  for (const incompleteOriginUrl of [
+    'git@gitlab.ugnas.com:',
+    'https://gitlab.ugnas.com/.git',
+    'git@gitlab.ugnas.com:?ref=main#readme'
+  ]) {
+    const identity = classifyRepositoryRemotes([
+      { name: 'origin', url: incompleteOriginUrl },
+      { name: 'upstream', url: 'git@192.168.75.113:platform/ugcli-lib.git' }
+    ]);
+
+    assert.equal(identity.kind, 'ambiguous_company_remote', incompleteOriginUrl);
+    assert.equal(identity.reason, 'trusted_company_host_missing_repository_path', incompleteOriginUrl);
+    assert.deepEqual(identity.remote_names, ['origin'], incompleteOriginUrl);
+  }
+});
+
 test('prefers a company origin over other company remotes', () => {
   const result = classifyRepositoryRemotes([
     { name: 'upstream', url: 'git@gitlab.ugnas.com:a/one.git' },
@@ -103,6 +131,18 @@ test('reads configured remotes through execFile without a shell', async () => {
   assert.deepEqual(calls[0].args, ['-C', '/retained-fixture/company-project', 'config', '--local', '--get-regexp', '^remote\\..*\\.url$']);
   assert.equal(calls[0].file, 'git');
   assert.equal(calls[0].options.shell, false);
+});
+
+test('reads local remote names containing dots from Git config output', async () => {
+  const identity = await identifyGitProject('/retained-fixture/dotted-remote-name', {
+    execFile: async () => ({
+      stdout: 'remote.origin.backup.url\tgit@gitlab.ugnas.com:platform/ugcli-lib.git\n'
+    })
+  });
+
+  assert.equal(identity.kind, 'company');
+  assert.equal(identity.remote_name, 'origin.backup');
+  assert.equal(identity.canonical_repository, 'ugnas-gitlab/platform/ugcli-lib');
 });
 
 test('does not treat a global remote as a local project remote', async () => {
