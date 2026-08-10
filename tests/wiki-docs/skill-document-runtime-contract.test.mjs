@@ -227,6 +227,16 @@ function findMatchingDelimiter(source, start, opening, closing) {
   return -1;
 }
 
+function stripOuterParentheses(expression) {
+  let stripped = expression.trim();
+  while (stripped.startsWith('(')) {
+    const closing = findMatchingDelimiter(stripped, 0, '(', ')');
+    if (closing !== stripped.length - 1) break;
+    stripped = stripped.slice(1, -1).trim();
+  }
+  return stripped;
+}
+
 function splitTopLevel(source, separator = ',') {
   const values = [];
   let start = 0;
@@ -370,7 +380,7 @@ function parseStaticStringLiteral(expression) {
 
 function parseNodeFsLoaderExpression(expression, bindings) {
   const loader = new RegExp(
-    `^(?:await\\s+)?(?:\\(\\s*)*(${identifierPattern})(?:\\s*\\))*\\s*(?:\\.\\s*call)?\\s*(?:\\?\\.)?\\s*\\(`,
+    `^(?:await\\s+)?(?:\\(\\s*)*(${identifierPattern})(?:\\s*\\))*\\s*(?:\\.\\s*(call))?\\s*(?:\\?\\.)?\\s*\\(`,
     'u'
   ).exec(expression);
   if (!loader) return null;
@@ -384,7 +394,9 @@ function parseNodeFsLoaderExpression(expression, bindings) {
   const end = findMatchingDelimiter(expression, opening, '(', ')');
   if (end === -1) return null;
 
-  const [source] = splitTopLevel(expression.slice(opening + 1, end));
+  const isCallInvocation = loader[2] === 'call';
+  const moduleSpecifierIndex = isCallInvocation ? 1 : 0;
+  const source = splitTopLevel(expression.slice(opening + 1, end))[moduleSpecifierIndex];
   const staticSpecifier = parseStaticStringLiteral(source || '');
   const tail = expression.slice(end + 1);
   if (staticSpecifier && new RegExp(`^${nodeFsModuleSpecifierPattern}$`, 'u').test(staticSpecifier)) {
@@ -428,7 +440,7 @@ function parseReflectGetExpression(expression) {
 }
 
 function isPotentialReflectGetAliasExpression(expression) {
-  const trimmed = expression.trim();
+  const trimmed = stripOuterParentheses(expression);
   if (/^Reflect\s*\.\s*get\s*$/u.test(trimmed)) return true;
   const bracket = /^Reflect\s*\[\s*([^\]\r\n]*)\s*\]$/u.exec(trimmed);
   if (!bracket) return false;
@@ -614,18 +626,19 @@ function collectNodeFsBindings(content) {
   for (let pass = 0; pass < 32; pass += 1) {
     let changed = false;
     for (const declaration of simpleDeclarations) {
-      if (/^require\s*$/u.test(declaration.expression.trim())) {
+      const normalizedExpression = stripOuterParentheses(declaration.expression);
+      if (/^require\s*$/u.test(normalizedExpression)) {
         changed = addNodeFsLoaderAlias(bindings, declaration.name) || changed;
       } else {
-        const alias = new RegExp(`^(${identifierPattern})\\s*$`, 'u').exec(declaration.expression.trim());
+        const alias = new RegExp(`^(${identifierPattern})\\s*$`, 'u').exec(normalizedExpression);
         if (alias && bindings.loaderAliases.has(alias[1])) {
           changed = addNodeFsLoaderAlias(bindings, declaration.name) || changed;
         }
       }
-      if (isPotentialReflectGetAliasExpression(declaration.expression)) {
+      if (isPotentialReflectGetAliasExpression(normalizedExpression)) {
         changed = addReflectGetAlias(bindings, declaration.name) || changed;
       } else {
-        const alias = new RegExp(`^(${identifierPattern})\\s*$`, 'u').exec(declaration.expression.trim());
+        const alias = new RegExp(`^(${identifierPattern})\\s*$`, 'u').exec(normalizedExpression);
         if (alias && bindings.reflectGetAliases.has(alias[1])) {
           changed = addReflectGetAlias(bindings, declaration.name) || changed;
         }
@@ -1095,6 +1108,55 @@ test('audit fails closed on direct Node fs loaders and Reflect.get aliases', () 
     temporaryLegacyDocumentExceptions.get('hooks/session-end.sh').operationIds.has('node-fs-mutation:dynamic-property'),
     false
   );
+});
+
+test('audit reads loader call specifiers after thisArgs and follows parenthesized aliases', () => {
+  const loaderCallCases = [
+    [
+      "require.call('node:path', moduleSpecifier).writeFileSync(target, content);",
+      ['node-fs-mutation:dynamic-property']
+    ],
+    [
+      "require.call('node:path', 'node:fs').writeFileSync(target, content);",
+      ['node-fs-mutation:writeFileSync']
+    ],
+    [
+      "require.call('node:fs', 'node:path').writeFileSync(target, content);",
+      []
+    ]
+  ];
+
+  for (const [index, [content, expectedOperationIds]] of loaderCallCases.entries()) {
+    assert.deepEqual(
+      new Set(legacyDocumentOperations(content)),
+      new Set(expectedOperationIds),
+      `loader call case ${index}`
+    );
+  }
+
+  const parenthesizedAliasCases = [
+    [
+      'const load = (require);',
+      'load(moduleSpecifier).writeFileSync(target, content);'
+    ].join('\n'),
+    [
+      'const $load = (require);',
+      '$load(moduleSpecifier).writeFileSync(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'const get = (Reflect.get);',
+      'get(disk, method)(target, content);'
+    ].join('\n')
+  ];
+
+  for (const [index, content] of parenthesizedAliasCases.entries()) {
+    assert.deepEqual(
+      new Set(legacyDocumentOperations(content)),
+      new Set(['node-fs-mutation:dynamic-property']),
+      `parenthesized alias case ${index}`
+    );
+  }
 });
 
 test('audit applies Node fs mutation detection to every runtime text path, including hook .cjs files', () => {
