@@ -21,4 +21,6 @@ description: You MUST use this when the user wants an existing implementation pl
 4. 分派代码质量 reviewer，检查正确性、可读性、测试与回归风险。
 5. 有 blocking issue 就修复并重新进行对应审查；通过后才进入下一任务。
 
-不要在任务间为了 “Should I continue?” 暂停：在计划仍清楚且任务独立时直接继续执行下一项。只在真正 blocker、genuine ambiguity、验证失败需要人决策或全部任务完成时停止。进展需要持久化时，使用运行时 `update`；对于 `confirmation_required` 只请求一次确认。`submitted_pending_review` 必须表述为“已投稿、待本机入库”，不能让下一个新会话依赖它。全部工作与验证结束后进入 `horspowers:finishing-a-development-branch`。
+不要在任务间为了 “Should I continue?” 暂停：在计划仍清楚且任务独立时直接继续执行下一项。只在真正 blocker、genuine ambiguity、验证失败需要人决策或全部任务完成时停止。进展需要持久化时，使用运行时 `update`；对于 `confirmation_required` 只请求一次确认。`submitted_pending_review` 必须表述为“已投稿、待本机入库”，不能让下一个新会话依赖它。
+
+全部任务完成后，必须先对最终全量 diff 进行一次独立 code review；发现 blocking 问题必须修复并复审，通过后才进入 `horspowers:finishing-a-development-branch`。每个任务的局部 review 和 finishing 的检查都不能替代这道最终门。

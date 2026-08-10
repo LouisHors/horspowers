@@ -57,7 +57,26 @@ test('normalizes a trusted host conservatively', () => {
 test('classifies missing and malformed remotes without treating them as company projects', () => {
   assert.equal(classifyRepositoryRemotes([]).kind, 'none');
   assert.equal(classifyRepositoryRemotes([{ name: 'origin', url: 'not a remote' }]).kind, 'external');
-  assert.equal(classifyRepositoryRemotes([{ name: 'origin', url: 'https://gitlab.ugnas.com/' }]).kind, 'external');
+});
+
+test('fails closed when a trusted company host has no repository path', () => {
+  for (const url of [
+    'https://gitlab.ugnas.com/',
+    'git@gitlab.ugnas.com:'
+  ]) {
+    const identity = classifyRepositoryRemotes([{ name: 'origin', url }]);
+    assert.equal(identity.kind, 'ambiguous_company_remote', url);
+  }
+
+  assert.deepEqual(
+    normalizeRemoteUrl('https://gitlab.ugnas.com/'),
+    {
+      authority: 'ugnas-gitlab',
+      host: 'gitlab.ugnas.com',
+      normalized_path: null,
+      canonical_repository: null
+    }
+  );
 });
 
 test('prefers a company origin over other company remotes', () => {
@@ -81,7 +100,28 @@ test('reads configured remotes through execFile without a shell', async () => {
 
   assert.equal(identity.kind, 'company');
   assert.equal(identity.project_fingerprint, classifyRepositoryRemotes([{ name: 'origin', url: SAME_REPOSITORY[0] }]).project_fingerprint);
-  assert.deepEqual(calls[0].args, ['-C', '/retained-fixture/company-project', 'config', '--get-regexp', '^remote\\..*\\.url$']);
+  assert.deepEqual(calls[0].args, ['-C', '/retained-fixture/company-project', 'config', '--local', '--get-regexp', '^remote\\..*\\.url$']);
+  assert.equal(calls[0].file, 'git');
+  assert.equal(calls[0].options.shell, false);
+});
+
+test('does not treat a global remote as a local project remote', async () => {
+  const calls = [];
+  const identity = await identifyGitProject('/retained-fixture/no-local-remote', {
+    execFile: async (file, args, options) => {
+      calls.push({ file, args, options });
+      return {
+        stdout: args.includes('--local')
+          ? ''
+          : 'remote.origin.url\thttps://github.com/example/global-only.git\n'
+      };
+    }
+  });
+
+  assert.equal(identity.kind, 'none');
+  assert.deepEqual(calls[0].args, [
+    '-C', '/retained-fixture/no-local-remote', 'config', '--local', '--get-regexp', '^remote\\..*\\.url$'
+  ]);
   assert.equal(calls[0].file, 'git');
   assert.equal(calls[0].options.shell, false);
 });

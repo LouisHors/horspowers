@@ -96,13 +96,25 @@ local backend 可保留完整 Markdown、代码片段和既有模板。Wiki back
 
 ## 结果处理
 
-| 状态 | 处理 |
+`lib/document-runtime.mjs` 导出的 `DOCUMENT_RUNTIME_RESULT_STATUSES` 是内置运行时和 CLI 的稳定状态目录；契约测试会直接对齐它。遇到目录外的未知 non-ready 状态，也一律按运行时不可用处理：保留会话内容、报告安全错误码，绝不回退创建项目内文档或配置。
+
+| 状态 | 用户语义与下一步 |
 | --- | --- |
+| `ready` | 已选定 backend；仅在这个状态后执行请求的下一动作。 |
+| `ok`、`created`、`updated`、`archived`、`restored`、`recorded` | 动作已经由返回的 backend 完成；以返回的 document 或 session 字段为准，不能臆测其他文档也已保存。 |
 | `confirmation_required` | 展示运行时给出的预览，只问用户一次是否投稿；用户确认后以同一结构化请求重试并将 `confirmed` 设为 true。不要重复询问。 |
-| `safe_document_required` | 不投稿。将内容重构为 safe-document 的 files、commands、implementation_specs 和短 prose，再重试。 |
 | `submitted_pending_review` | 明确说明“已投稿、待本机入库”；它不是已入库、不可在新会话当作已读取事实。保留本会话内容。 |
 | `partially_submitted` | 报告每个成功投稿和失败项；只重试失败项，不把整体说成已保存。 |
-| `submission_safety_blocked` | 不回显被拒绝正文；去除源码、diff、凭据、日志或其他不安全内容后重新构造请求。 |
-| `unavailable` 或任何非 ready 的可用性状态 | 继续代码协作时把文档内容保留在会话中，准确说明未持久化；绝不创建本地替代文档或配置。 |
+| `invalid_request` | 修正 schema、action 或字段后再请求；不把无效请求转换为本地写入。 |
+| `context_unavailable`、`not_a_project`、`unregistered_no_remote`、`ambiguous_company_remote` | 项目身份或根目录不能安全确定；保留会话内容并请用户修复身份，不读取或写入替代路径。 |
+| `wiki_unavailable`、`unregistered_company_project`、`registry_invalid`、`project_config_invalid`、`project_config_incompatible` | 公司项目的 Registry、配置或完整性检查未通过；报告状态与安全错误码，绝不使用遗留本地配置作为回退。 |
+| `local_config_unavailable`、`documentation_disabled` | 当前项目未启用可用文档后端；继续代码协作可以，但文档不持久化，也不初始化 docs。 |
+| `documentation_backend_unavailable`、`local_backend_unavailable`、`wiki_backend_unavailable`、`runtime_unavailable` | 运行时或已选 backend 不可用；保留内容并报告未持久化，不重试为直接文件操作。 |
+| `not_found`、`document_not_found` | 目标不存在；要求稳定 logical ID 或有效本地路径，不能创建同名替代物来伪装更新成功。 |
+| `conflict`、`document_conflict` | 并发版本或同名对象冲突；读取当前事实后让用户决定或提交新的 revision，不能覆盖。 |
+| `operation_failed`、`submission_failed` | backend 或投稿执行失败；明确失败并只在安全、可重试的前提下重试原动作。 |
+| `manifest_invalid`、`manifest_incompatible`、`manifest_content_mismatch`、`config_manifest_mismatch`、`wiki_search_invalid` | Wiki 事实、范围或完整性不可信；停止该文档动作，不能用相似搜索结果或本地文件替代。 |
+| `safe_document_required` | 不投稿。将内容重构为 safe-document 的 files、commands、implementation_specs 和短 prose，再重试。 |
+| `submission_safety_blocked`、`raw_source_detected`、`source_scan_incomplete` | 不回显被拒绝正文；去除源码、diff、凭据、日志或其他不安全内容后重新构造请求。 |
 
-其他失败状态也应保留内容并报告状态与安全的错误码，而不是臆测成功。任何 Inbox 投稿在本机审核、入库并刷新索引前都只是 `submitted_pending_review`。
+任何 Inbox 投稿在本机审核、入库并刷新索引前都只是 `submitted_pending_review`。

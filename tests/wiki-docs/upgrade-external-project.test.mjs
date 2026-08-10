@@ -87,6 +87,12 @@ test('ambiguous company remotes are explicit no-mutation failures', async (t) =>
   await expectNoMutation(root, 'ambiguous_project_upgrade_disabled');
 });
 
+test('trusted company host without a repository path is an unavailable-identity no-mutation failure', async (t) => {
+  const root = await fixture({ remotes: [{ name: 'origin', url: 'https://gitlab.ugnas.com/' }] });
+  t.after(() => rm(root, { recursive: true, force: true }));
+  await expectNoMutation(root, 'project_identity_unavailable');
+});
+
 test('projects without a remote are explicit no-mutation failures', async (t) => {
   const root = await fixture();
   t.after(() => rm(root, { recursive: true, force: true }));
