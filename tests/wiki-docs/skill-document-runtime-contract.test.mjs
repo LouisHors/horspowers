@@ -157,6 +157,7 @@ function createNodeFsBindings() {
     dynamicModules: new Set(),
     possibleModules: new Set(),
     dynamicProperties: new Set(),
+    loaderAliases: new Set(),
     reflectGetAliases: new Set(),
     methods: new Map()
   };
@@ -190,6 +191,14 @@ function descriptorsForNodeFsBinding(bindings, name) {
 
 function addReflectGetAlias(bindings, name) {
   return addToSet(bindings.reflectGetAliases, name);
+}
+
+function addNodeFsLoaderAlias(bindings, name) {
+  return addToSet(bindings.loaderAliases, name);
+}
+
+function escapeRegexLiteral(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
 }
 
 function findMatchingDelimiter(source, start, opening, closing) {
@@ -359,9 +368,17 @@ function parseStaticStringLiteral(expression) {
   return match ? (match[1] ?? match[2]) : null;
 }
 
-function parseNodeFsLoaderExpression(expression) {
-  const loader = /^(?:await\s+)?(require|import)\s*\(/u.exec(expression);
+function parseNodeFsLoaderExpression(expression, bindings) {
+  const loader = new RegExp(
+    `^(?:await\\s+)?(?:\\(\\s*)*(${identifierPattern})(?:\\s*\\))*\\s*(?:\\.\\s*call)?\\s*(?:\\?\\.)?\\s*\\(`,
+    'u'
+  ).exec(expression);
   if (!loader) return null;
+
+  const loaderName = loader[1];
+  const isDynamicImport = loaderName === 'import';
+  const isRequire = loaderName === 'require' || bindings.loaderAliases.has(loaderName);
+  if (!isDynamicImport && !isRequire) return null;
 
   const opening = loader[0].lastIndexOf('(');
   const end = findMatchingDelimiter(expression, opening, '(', ')');
@@ -372,7 +389,7 @@ function parseNodeFsLoaderExpression(expression) {
   const tail = expression.slice(end + 1);
   if (staticSpecifier && new RegExp(`^${nodeFsModuleSpecifierPattern}$`, 'u').test(staticSpecifier)) {
     return {
-      descriptors: [loader[1] === 'import'
+      descriptors: [isDynamicImport
         ? 'dynamic-module'
         : (staticSpecifier.endsWith('/promises') ? 'promises' : 'module')],
       tail
@@ -385,31 +402,51 @@ function parseNodeFsLoaderExpression(expression) {
 }
 
 function parseReflectGetExpression(expression) {
-  const match = /^Reflect\s*\.\s*get\s*\(/u.exec(expression);
+  const dot = /^Reflect\s*\.\s*get\s*(?:\.\s*(call)\s*)?\(/u.exec(expression);
+  const bracket = /^Reflect\s*\[\s*([^\]\r\n]*)\s*\]\s*(?:\.\s*(call)\s*)?\(/u.exec(expression);
+  const match = dot ?? bracket;
   if (!match) return null;
+
+  const bracketProperty = bracket ? parseStaticStringLiteral(bracket[1]) : 'get';
+  if (bracketProperty !== null && bracketProperty !== 'get') return null;
 
   const opening = match[0].lastIndexOf('(');
   const end = findMatchingDelimiter(expression, opening, '(', ')');
   if (end === -1) return null;
 
-  const [target, property] = splitTopLevel(expression.slice(opening + 1, end));
+  const values = splitTopLevel(expression.slice(opening + 1, end));
+  const argumentOffset = dot?.[1] === 'call' || bracket?.[2] === 'call' ? 1 : 0;
+  const [target, property] = values.slice(argumentOffset, argumentOffset + 2);
   if (!target || !property) return null;
   return {
     target,
-    property: parseStaticStringLiteral(property) ?? dynamicNodeFsProperty,
+    property: bracketProperty === null
+      ? dynamicNodeFsProperty
+      : (parseStaticStringLiteral(property) ?? dynamicNodeFsProperty),
     tail: expression.slice(end + 1)
   };
 }
 
+function isPotentialReflectGetAliasExpression(expression) {
+  const trimmed = expression.trim();
+  if (/^Reflect\s*\.\s*get\s*$/u.test(trimmed)) return true;
+  const bracket = /^Reflect\s*\[\s*([^\]\r\n]*)\s*\]$/u.exec(trimmed);
+  if (!bracket) return false;
+  const property = parseStaticStringLiteral(bracket[1]);
+  return property === null || property === 'get';
+}
+
 function parseReflectGetAliasExpression(expression, bindings) {
-  const match = new RegExp(`^(${identifierPattern})\\s*\\(`, 'u').exec(expression);
+  const match = new RegExp(`^(${identifierPattern})\\s*(?:\\.\\s*(call)\\s*)?\\(`, 'u').exec(expression);
   if (!match || !bindings.reflectGetAliases.has(match[1])) return null;
 
   const opening = match[0].lastIndexOf('(');
   const end = findMatchingDelimiter(expression, opening, '(', ')');
   if (end === -1) return null;
 
-  const [target, property] = splitTopLevel(expression.slice(opening + 1, end));
+  const values = splitTopLevel(expression.slice(opening + 1, end));
+  const argumentOffset = match[2] === 'call' ? 1 : 0;
+  const [target, property] = values.slice(argumentOffset, argumentOffset + 2);
   if (!target || !property) return null;
   return {
     target,
@@ -437,7 +474,7 @@ function resolveNodeFsExpression(expression, bindings) {
       .map((descriptor) => descriptor.startsWith('method:') ? 'dynamic-property' : descriptor);
   }
 
-  const loader = parseNodeFsLoaderExpression(trimmed);
+  const loader = parseNodeFsLoaderExpression(trimmed, bindings);
   let descriptors;
   let tail;
 
@@ -530,6 +567,17 @@ function addDestructuredNodeFsBindings(bindings, sourceDescriptors, pattern) {
   return changed;
 }
 
+function addDestructuredReflectGetAliases(bindings, expression, pattern) {
+  if (!/^Reflect\s*$/u.test(expression.trim())) return false;
+  let changed = false;
+  for (const entry of parseObjectPattern(pattern)) {
+    if (entry.path.length === 1 && entry.path[0] === 'get') {
+      changed = addReflectGetAlias(bindings, entry.name) || changed;
+    }
+  }
+  return changed;
+}
+
 function addEsmNodeFsBindings(content, bindings) {
   const importPattern = new RegExp(
     String.raw`(?:^|\n)\s*import\s+([^\n;]+?)\s+from\s+['"](${nodeFsModuleSpecifierPattern})['"]`,
@@ -566,7 +614,15 @@ function collectNodeFsBindings(content) {
   for (let pass = 0; pass < 32; pass += 1) {
     let changed = false;
     for (const declaration of simpleDeclarations) {
-      if (/^Reflect\s*\.\s*get\s*$/u.test(declaration.expression.trim())) {
+      if (/^require\s*$/u.test(declaration.expression.trim())) {
+        changed = addNodeFsLoaderAlias(bindings, declaration.name) || changed;
+      } else {
+        const alias = new RegExp(`^(${identifierPattern})\\s*$`, 'u').exec(declaration.expression.trim());
+        if (alias && bindings.loaderAliases.has(alias[1])) {
+          changed = addNodeFsLoaderAlias(bindings, declaration.name) || changed;
+        }
+      }
+      if (isPotentialReflectGetAliasExpression(declaration.expression)) {
         changed = addReflectGetAlias(bindings, declaration.name) || changed;
       } else {
         const alias = new RegExp(`^(${identifierPattern})\\s*$`, 'u').exec(declaration.expression.trim());
@@ -579,6 +635,7 @@ function collectNodeFsBindings(content) {
       }
     }
     for (const declaration of objectDeclarations) {
+      changed = addDestructuredReflectGetAliases(bindings, declaration.expression, declaration.pattern) || changed;
       const sourceDescriptors = resolveNodeFsExpression(declaration.expression, bindings);
       changed = addDestructuredNodeFsBindings(bindings, sourceDescriptors, declaration.pattern) || changed;
     }
@@ -643,7 +700,13 @@ function loaderExpressionStart(source, loaderStart) {
 }
 
 function addDirectLoaderMutationOperations(content, bindings, operationIds) {
-  const loaderPattern = /\b(?:require|import)\s*\(/gu;
+  const names = ['require', 'import', ...bindings.loaderAliases]
+    .map(escapeRegexLiteral)
+    .join('|');
+  const loaderPattern = new RegExp(
+    `(?<![A-Za-z0-9_$])(?:\\(\\s*)*(?:${names})(?:\\s*\\))*\\s*(?:\\.\\s*call)?\\s*(?:\\?\\.)?\\s*\\(`,
+    'gu'
+  );
   for (const match of content.matchAll(loaderPattern)) {
     const loaderStart = match.index ?? 0;
     const opening = loaderStart + match[0].lastIndexOf('(');
@@ -659,9 +722,12 @@ function addDirectLoaderMutationOperations(content, bindings, operationIds) {
 }
 
 function addReflectGetInvocationOperations(content, bindings, operationIds) {
-  const callees = ['Reflect\\s*\\.\\s*get', ...bindings.reflectGetAliases];
+  const callees = [
+    'Reflect\\s*(?:\\.\\s*get|\\[\\s*[^\\]\\r\\n]*\\])',
+    ...[...bindings.reflectGetAliases].map(escapeRegexLiteral)
+  ];
   for (const callee of callees) {
-    const pattern = new RegExp(`\\b(?:${callee})\\s*\\(`, 'gu');
+    const pattern = new RegExp(`(?<![A-Za-z0-9_$])(?:${callee})(?:\\s*\\.\\s*call)?\\s*\\(`, 'gu');
     for (const match of content.matchAll(pattern)) {
       const start = match.index ?? 0;
       const opening = start + match[0].lastIndexOf('(');
@@ -976,9 +1042,39 @@ test('audit fails closed on direct Node fs loaders and Reflect.get aliases', () 
     'require(moduleSpecifier).writeFileSync(target, content);',
     "(await import('node:fs')).writeFileSync(target, content);",
     "(require('node:' + 'fs')).writeFileSync(target, content);",
+    '(require)(moduleSpecifier).writeFileSync(target, content);',
+    'require?.(moduleSpecifier).writeFileSync(target, content);',
+    'require.call(null, moduleSpecifier).writeFileSync(target, content);',
+    [
+      'const load = require;',
+      'load(moduleSpecifier).writeFileSync(target, content);'
+    ].join('\n'),
     [
       "const disk = require('node:fs');",
       'const get = Reflect.get;',
+      'get(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'const $get = Reflect.get;',
+      '$get(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      "Reflect['get'](disk, method)(target, content);"
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      "const get = Reflect['get'];",
+      'get(disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'Reflect.get.call(Reflect, disk, method)(target, content);'
+    ].join('\n'),
+    [
+      "const disk = require('node:fs');",
+      'const { get } = Reflect;',
       'get(disk, method)(target, content);'
     ].join('\n')
   ];
