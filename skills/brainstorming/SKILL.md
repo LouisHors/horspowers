@@ -5,236 +5,69 @@ description: "You MUST use this before any creative work - creating features, bu
 
 # Brainstorming Ideas Into Designs
 
-Help turn ideas into fully formed designs and specs through natural collaborative dialogue.
+通过自然、逐步的对话把想法变成可实施的设计。先理解问题，再提出替代方案，最后在用户批准设计后才进入实施计划。
 
-Start by understanding the current project context, then ask questions one at a time to refine the idea. Once you understand what you're building, present the design and get user approval before any implementation work begins.
-
-**Announce at start:** "我正在使用头脑风暴技能来完善你的想法..." (I'm using brainstorming to refine your idea...)
+**开始时声明：**“我正在使用头脑风暴技能来完善你的想法。”
 
 <HARD-GATE>
-Do NOT invoke any implementation skill, write any code, scaffold any project, or take any implementation action until you have presented a design and the user has approved it. This applies to EVERY project regardless of perceived simplicity.
+在呈现设计且得到用户批准前，禁止写代码、脚手架、调用实施技能或采取任何实施动作；需求再简单也一样。
 </HARD-GATE>
 
-## Anti-Pattern: "这个需求太简单，不需要设计"
+## 过程
 
-每个项目都必须经过 brainstorming。一个 TODO、小工具、配置调整，都会因为未经审视的假设而浪费时间。简单项目可以有简短设计，但不能跳过设计和确认。
+1. 一次性收集受限项目上下文、近期变更与已有知识；把结论标成仓库事实、Wiki 历史、用户确认事实或 Agent 推断。
+2. 一次只问一个澄清问题，确认目标、约束、成功标准和范围。
+3. 提供 2–3 个方案、权衡和推荐项；不要为未被要求的功能扩张范围。
+4. 分段呈现架构、组件、数据流、错误处理和验证方法，并让用户逐段校准。
+5. 设计获批后，决定是否需要持久化设计；若需要，按下面的统一运行时流程处理。
 
-## Checklist
+复杂请求先拆成可独立验证的子项目；每个子项目单独经历设计、计划和实施循环。
 
-You MUST create a task for each of these items and complete them in order:
+## 背景上下文收集
 
-1. **Explore project context** - check files, docs, recent commits
-2. **Offer visual companion** (if topic will involve visual questions) - this must be its own message
-3. **Ask clarifying questions** - one at a time, understand purpose/constraints/success criteria
-4. **Propose 2-3 approaches** - with trade-offs and your recommendation
-5. **Present design** - in sections scaled to complexity, get approval
-6. **Decide whether to write a design doc** - based on documentation settings and decision importance
-7. **Structured spec review** - if a design doc is written, review it against the reviewer prompt criteria
-8. **Fix review issues** - if the review finds blockers, update the design doc and review again
-9. **User reviews written spec** - if a design doc is written, ask the user to review it before moving on
-10. **Transition to implementation planning** - invoke writing-plans, not implementation
+在第一个澄清问题前调用安装目录中的 `collect-context.mjs` 一次。无需为 qmd 单独询问：进入 brainstorming 已授权这项只读收集。输入必须经宿主结构化 JSON stdin 传入，不能把用户原文插进命令字符串；收集器并行读取受限 Wiki、仓库、Git 历史和入口文件，任何一个分支失败都不阻止其他只读分支。
 
-## Process Flow
+检索结果只是候选证据：明确区分**仓库事实**、**Wiki 历史**、用户确认事实和**Agent 推断**。若 Wiki 与仓库不一致，展示两者来源并请用户确认基线；同一主题复用已收集的结果，仅在新模块或证据缺口出现时增量收集。
 
-```dot
-digraph brainstorming {
-    "Explore project context" [shape=box];
-    "Visual questions ahead?" [shape=diamond];
-    "Offer Visual Companion\n(own message only)" [shape=box];
-    "Ask clarifying questions" [shape=box];
-    "Need decomposition first?" [shape=diamond];
-    "Decompose into sub-projects" [shape=box];
-    "Propose 2-3 approaches" [shape=box];
-    "Present design sections" [shape=box];
-    "User approves design?" [shape=diamond];
-    "Write design doc?" [shape=diamond];
-    "Write design doc" [shape=box];
-    "Structured spec review" [shape=box];
-    "Review issues found?" [shape=diamond];
-    "Fix design doc" [shape=box];
-    "User reviews spec?" [shape=diamond];
-    "Invoke writing-plans skill" [shape=doublecircle];
+## 统一文档运行时
 
-    "Explore project context" -> "Visual questions ahead?";
-    "Visual questions ahead?" -> "Offer Visual Companion\n(own message only)" [label="yes"];
-    "Visual questions ahead?" -> "Ask clarifying questions" [label="no"];
-    "Offer Visual Companion\n(own message only)" -> "Ask clarifying questions";
-    "Ask clarifying questions" -> "Need decomposition first?";
-    "Need decomposition first?" -> "Decompose into sub-projects" [label="yes"];
-    "Need decomposition first?" -> "Propose 2-3 approaches" [label="no"];
-    "Decompose into sub-projects" -> "Propose 2-3 approaches";
-    "Propose 2-3 approaches" -> "Present design sections";
-    "Present design sections" -> "User approves design?";
-    "User approves design?" -> "Present design sections" [label="no, revise"];
-    "User approves design?" -> "Write design doc?" [label="yes"];
-    "Write design doc?" -> "Write design doc" [label="yes"];
-    "Write design doc?" -> "Invoke writing-plans skill" [label="no"];
-    "Write design doc" -> "Structured spec review";
-    "Structured spec review" -> "Review issues found?";
-    "Review issues found?" -> "Fix design doc" [label="yes"];
-    "Fix design doc" -> "Structured spec review";
-    "Review issues found?" -> "User reviews spec?" [label="no"];
-    "User reviews spec?" -> "Fix design doc" [label="changes requested"];
-    "User reviews spec?" -> "Invoke writing-plans skill" [label="approved"];
-}
-```
+先阅读 `horspowers:using-horspowers/references/document-runtime.md` 并严格遵守其安装根解析、JSON stdin 和结果处理契约。不得根据项目中的配置标记或目录是否存在选择文档后端，也不得直接读写文档路径。
 
-**The terminal state is invoking writing-plans.** Do NOT invoke frontend-design, mcp-builder, or any other implementation skill directly from brainstorming.
+1. 调用 `resolve`。非 `ready`、unavailable、未注册或身份歧义时，保留设计在当前会话并明确“未持久化”；绝不创建本地替代文档。
+2. 调用 `search` 查找相关 context、design 和 plan 候选；对选中的 logical ID 或本地运行时路径调用 `get` 读取完整正文。
+3. 仅当设计含有重要架构、数据模型、接口或技术取舍时，询问用户是否创建设计文档；简单设计可只保留在会话并进入 `horspowers:writing-plans`。
+4. 获准后通过 `create` 创建 design。后续用户修订必须通过 `update`，再重新读取完整正文。
 
-## The Process
+local backend 的 design content 保留完整 Markdown 设计模板及必要的代码片段。Wiki backend 必须提交 safe-document：
 
-**Understanding the idea:**
-- Before the first clarifying question, collect bounded project context once for the current discussion topic. 无需为 qmd 单独询问：进入 brainstorming 即授权这项只读收集。
-- Build the collector JSON through the host's structured input or safe environment variable; never interpolate the user message into a shell command. The collector is stdin-only:
-  ```bash
-  printf '%s' "$HORSPOWERS_CONTEXT_INPUT" | \
-    node "<native-horspowers-root>/brainstorming/scripts/collect-context.mjs"
-  ```
-  Resolve `<native-horspowers-root>` from the host's native skill discovery metadata. If that path cannot be resolved, continue without collection rather than guessing a user-directory path.
-- Collector branches run Wiki/qmd, repository text/files, Git history, and known entry files in parallel. A failed branch does not block the other branches. It uses `rg -> git grep -> bounded grep`, `rg --files -> git ls-files -> find`, and qmd semantic query only after sparse keyword results.
-- Treat results as candidates, not automatic truth. Label questions and summaries as **仓库事实**、**Wiki 历史**、**用户已确认事实** or **Agent 推断**. When Wiki and repository evidence disagree, show both source paths and ask which baseline applies.
-- Reuse the result for the same topic. Only run an incremental collection when a new project, module, or factual gap appears. Never read files matched by the collector's sensitive-file rules.
-- Check out the current project state first (files, docs, recent commits)
-- Before asking detailed questions, assess scope. If the request contains multiple loosely coupled subsystems, decompose it before refining details.
-- If the request is too large for a single spec, break it into sub-projects and brainstorm the first one through the normal flow. Each sub-project gets its own spec -> plan -> implementation cycle.
-- Ask questions one at a time to refine the idea
-- Prefer multiple choice questions when possible, but open-ended is fine too
-- Only one question per message - if a topic needs more exploration, break it into multiple questions
-- Focus on understanding: purpose, constraints, success criteria
+- 受影响路径进入 `files`；验证命令与 Expected 进入 `commands`。
+- 组件 symbol、输入、输出、规则和错误边界进入 `implementation_specs`。
+- `paragraphs` 只能放短、原创的设计说明，不能放完整源码、diff、日志或自由 Markdown。
 
-**Exploring approaches:**
-- Propose 2-3 different approaches with trade-offs
-- Present options conversationally with your recommendation and reasoning
-- Lead with your recommended option and explain why
+普通 local backend 仍返回既有 `docs/plans/` 设计路径；Wiki backend 返回 logical ID/URI。工作流只使用运行时返回值，不以该路径选择 backend。
 
-**Presenting the design:**
-- Once you believe you understand what you're building, present the design
-- Scale each section to its complexity: a few sentences if straightforward, up to 200-300 words if nuanced
-- Ask after each section whether it looks right so far
-- Cover: architecture, components, data flow, error handling, testing
-- Be ready to go back and clarify if something doesn't make sense
+若结果为 `confirmation_required`，展示 preview 后只询问一次，确认时以同一结构化请求重试。`safe_document_required` 或 `submission_safety_blocked` 时重构安全结构而不回显受限正文。`submitted_pending_review` 必须说“已投稿、待本机入库”，不能说已保存或已成为后续会话的事实；`partially_submitted` 必须逐项报告。
 
-**Design for isolation and clarity:**
-- Break the system into smaller units that each have one clear purpose and well-defined boundaries
-- For each unit, be able to answer: what it does, how it is used, and what it depends on
-- If understanding a unit requires reading all its internals, or changing internals breaks consumers, the boundary is weak and should be redesigned
-- When working in an existing codebase, follow current patterns and only propose targeted refactors that serve the current goal
+## 设计审查门
 
-## After the Design
+设计创建或更新后，先调用 `get` 取得**完整设计正文**，再将完整正文和 `skills/brainstorming/spec-document-reviewer-prompt.md` 一起交给 reviewer；宿主无子代理时使用同一标准自审。
 
-**Documentation Integration (遵循最小必要文档原则):**
+审查必须覆盖：
 
-IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
+- 完整性：没有 TODO、TBD、占位或“实现时再定”。
+- 一致性与无歧义：实现者不应被迫补做设计决定。
+- 范围与 YAGNI：没有超出已确认需求的复杂度。
+- 可实施性：数据流、错误处理与验证边界足够明确。
 
-  **Initialize if needed:**
-  IF session context shows `docs_auto_init:true`:
-    Run: Create `docs/` directory structure using core docs module
+有 blocking issue 时，以 `update` 修复并重新审查，直到通过。只有结构化审查通过后才请用户审阅；用户要求修改时，重新 `update`、`get` 和审查。得到用户批准后才调用 `horspowers:writing-plans`，而不是直接开始实施。
 
-  **Search existing context (在创建新文档前):**
-  Run: Search `docs/context/` for project architecture and `docs/plans/` for related designs
-  Purpose: 避免重复创建，复用现有文档
+## 可视化伴侣
 
-  **判断是否需要创建设计文档:**
-  IF 设计中包含重要的技术方案选择（架构变更、技术栈选择、数据模型设计等）:
-    ASK user: "这个设计包含重要的方案决策，是否需要创建设计文档记录？
+当布局、流程或方案对比用图更清楚时，可以单独一次征得用户同意后使用可视化伴侣。概念、约束和接口讨论仍优先用对话与文本，不因可视化绕过设计确认。
 
-    **选项:**
-    1. **创建设计文档** - 记录方案对比和决策理由（推荐用于重要功能）
-    2. **跳过设计文档** - 直接进入实施计划（适用于简单功能）
+## 原则
 
-    说明: 核心文档数量建议不超过 3 个（design + plan + task），避免文档膨胀"
-
-    IF user chooses 创建设计文档:
-      Use horspowers:document-management or core module
-      Create: `docs/plans/YYYY-MM-DD-design-<topic>.md` (前缀式命名)
-
-      In the created document, populate (使用统一的设计模板):
-      - ## 基本信息: 创建时间、设计者、状态
-      - ## 设计背景: [为什么需要这个设计]
-      - ## 设计方案: [方案A、方案B等，包括优缺点]
-      - ## 最终设计: [选择的方案及详细理由]
-      - ## 技术细节: [架构、组件、数据流等]
-      - ## 影响范围: [这个设计影响的模块/系统]
-      - ## 实施计划: [如何实施这个设计]
-      - ## 结果评估: [设计实施后的效果评估]
-      - ## 相关文档: [计划文档链接]
-
-    ELSE (user chooses 跳过):
-      DO NOT create design document
-      Summarize the approved design in the conversation
-      PROCEED directly to writing-plans
-
-  ELSE (设计不包含重要方案选择):
-    DO NOT create design document
-    Summarize the approved design in the conversation
-    PROCEED directly to writing-plans
-
-**Original documentation (备用方案):**
-如果用户选择创建设计文档:
-- Write the validated design to `docs/plans/YYYY-MM-DD-design-<topic>.md` (前缀式)
-- Use elements-of-style:writing-clearly-and-concisely skill if available
-- Commit the design document to git
-
-**Spec Self-Review (如果已写设计文档):**
-After writing the design doc in `docs/plans/`, run a structured review before asking the user to review it.
-
-Use `skills/brainstorming/spec-document-reviewer-prompt.md` as the review criteria:
-
-1. **If the host supports subagents:** dispatch a reviewer using that prompt against the design doc.
-2. **If the host does not support subagents:** do the equivalent local self-review using the same criteria and output structure.
-
-The review must check for:
-
-1. **Completeness:** Any "TODO", "TBD", unfinished sections, "deferred definition", "decide later", or "to be defined during implementation" language? Fix it.
-2. **Internal consistency:** Do any sections contradict each other?
-3. **Scope check:** Is this still small enough for a single implementation plan?
-4. **Implementation-blocking ambiguity:** Could an engineer reasonably interpret a requirement in two different ways, or be forced to make a missing design decision during implementation?
-5. **YAGNI:** Did the design doc add features or complexity the user did not ask for?
-
-Fix blocking issues inline and rerun the structured review until it passes. Do not move forward with an obviously fuzzy spec, and do not start implementation from brainstorming.
-
-**User Review Gate (如果已写设计文档):**
-- Only ask for user review after the structured review has passed.
-- Tell the user: "设计已保存到文档，并已完成结构化审查。请先检查文档内容；如果需要修改，我会先调整文档，再进入实施计划。"
-- Wait for user confirmation - they may edit the document before proceeding
-- If the user requests changes, update the document in `docs/plans/` and rerun the structured review before asking for approval again
-- Only proceed once the user approves the document
-
-**Document as communication medium:**
-- If user says "继续" or "ready" after documentation, re-read the design document (if created)
-- The document may have been modified by the user - treat it as the source of truth
-- Confirm understanding before proceeding: "基于文档中的设计，我们准备开始实施。确认继续？"
-
-**Implementation (if continuing):**
-- Do NOT start implementation directly from brainstorming
-- The next skill is horspowers:writing-plans
-- Only invoke writing-plans after the design doc review loop and user approval are complete
-- writing-plans can then decide how implementation should be executed
-
-## Visual Companion
-
-A browser-based companion for showing mockups, diagrams, and visual options during brainstorming. It is optional and should be enabled only when a question is materially easier to understand visually.
-
-**Offering the companion:**
-When you anticipate visual questions (mockups, layouts, diagrams), offer it once for consent:
-
-> "有些内容如果我直接在浏览器里给你看会更容易理解。我可以在讨论过程中提供界面草图、流程图、方案对比等可视化内容。这个能力还比较新，而且会增加一些上下文开销。要不要试一下？（需要打开本地 URL）"
-
-**This offer MUST be its own message.** Do not combine it with a clarification question or any other content.
-
-**Per-question decision:**
-- Use the browser for inherently visual topics: layout comparisons, mockups, diagrams, visual hierarchy
-- Use the terminal for conceptual and textual topics: requirements, trade-offs, scope, API decisions
-
-If the user accepts, read the detailed guide before proceeding:
-`skills/brainstorming/visual-companion.md`
-
-## Key Principles
-
-- **One question at a time** - Don't overwhelm with multiple questions
-- **Multiple choice preferred** - Easier to answer than open-ended when possible
-- **YAGNI ruthlessly** - Remove unnecessary features from all designs
-- **Explore alternatives** - Always propose 2-3 approaches before settling
-- **Incremental validation** - Present design and get approval before moving on
-- **Design before implementation** - No coding, scaffolding, or implementation skills before approval
-- **Be flexible** - Go back and clarify when something doesn't make sense
+- 一次一个问题，优先可选择的回答。
+- 保持范围小、设计可验证、假设可追溯。
+- 设计文档是沟通媒介；继续前总是以运行时重新读取的完整正文为准。
+- brainstorming 的终点只能是 `horspowers:writing-plans`。
