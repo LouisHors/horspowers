@@ -45,6 +45,24 @@ function createClient({
   };
 }
 
+function runNodeScript(source) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, ['--input-type=module', '-e', source], {
+      cwd: path.resolve(path.dirname(fixturePath), '..', '..', '..'),
+      shell: false,
+      stdio: ['ignore', 'pipe', 'pipe']
+    });
+    let stdout = '';
+    let stderr = '';
+    child.stdout.setEncoding('utf8');
+    child.stderr.setEncoding('utf8');
+    child.stdout.on('data', (chunk) => { stdout += chunk; });
+    child.stderr.on('data', (chunk) => { stderr += chunk; });
+    child.once('error', reject);
+    child.once('close', (code) => resolve({ code, stdout, stderr }));
+  });
+}
+
 test('gets one exact qmd URI through the get tool over a shell-free SSH process', async () => {
   const { client, calls } = createClient();
   const outcome = await client.getExact(EXACT_URI);
@@ -195,4 +213,55 @@ test('rejects a response that is not JSON-RPC 2.0', async () => {
 
   assert.equal(outcome.ok, false);
   assert.equal(outcome.error_code, 'mcp_invalid_response');
+});
+
+test('handles an EPIPE from MCP stdin as a stable bounded write failure', async () => {
+  const moduleUrl = new URL('../../lib/qmd-mcp-client.mjs', import.meta.url).href;
+  const source = `
+    import { EventEmitter } from 'node:events';
+    import { QmdMcpClient } from ${JSON.stringify(moduleUrl)};
+
+    const child = new EventEmitter();
+    child.stdout = new EventEmitter();
+    child.stderr = new EventEmitter();
+    child.stdin = new EventEmitter();
+    child.stdin.destroyed = false;
+    child.stdin.end = () => {};
+    child.kill = () => true;
+    child.stdin.write = (line, callback) => {
+      const message = JSON.parse(line);
+      if (message.method === 'initialize') {
+        queueMicrotask(() => {
+          child.stdout.emit('data', Buffer.from(JSON.stringify({
+            jsonrpc: '2.0',
+            id: message.id,
+            result: { protocolVersion: '2025-06-18' }
+          }) + '\\n'));
+          callback?.();
+        });
+      } else if (message.method === 'tools/list') {
+        queueMicrotask(() => {
+          const error = Object.assign(new Error('synthetic secret must not escape'), { code: 'EPIPE' });
+          child.stdin.emit('error', error);
+          callback?.(error);
+        });
+      } else {
+        queueMicrotask(() => callback?.());
+      }
+      return false;
+    };
+
+    const client = new QmdMcpClient({
+      collection: 'my-code-wiki',
+      transport: { ssh_alias: 'localwiki', timeout_ms: 1000, max_response_bytes: 8192 }
+    }, { spawnImpl: () => child });
+    const outcome = await client.getExact('qmd://my-code-wiki/projects/horspowers-registry.md');
+    process.stdout.write(JSON.stringify(outcome));
+  `;
+
+  const result = await runNodeScript(source);
+
+  assert.equal(result.code, 0, result.stderr);
+  assert.deepEqual(JSON.parse(result.stdout), { ok: false, error_code: 'mcp_write_failed' });
+  assert.doesNotMatch(`${result.stdout}${result.stderr}`, /synthetic secret/u);
 });
