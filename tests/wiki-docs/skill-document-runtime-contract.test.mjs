@@ -46,6 +46,7 @@ const temporaryLegacyDocumentExceptions = new Map([
       'shell-document-append',
       'metadata-directory-write',
       'metadata-file-write',
+      'node-fs-mutation',
       'docs-core-archive'
     ])
   }]
@@ -58,11 +59,21 @@ const runtimeTextExtensions = new Set([
   '.tsx', '.yaml', '.yml', '.zsh'
 ]);
 const ignoredAuditDirectories = new Set(['.git', '.worktrees', 'coverage', 'node_modules']);
+const nodeFsMutationMethods = new Set([
+  'appendFile', 'chmod', 'chown', 'copyFile', 'cp', 'createWriteStream',
+  'fchmod', 'fchown', 'ftruncate', 'link', 'lchmod', 'lchown', 'lutimes',
+  'mkdir', 'mkdtemp', 'open', 'rename', 'rm', 'rmdir', 'symlink', 'truncate',
+  'unlink', 'utimes', 'write', 'writeFile', 'writev'
+]);
+const nodeFsMutationMethodPattern = [...nodeFsMutationMethods]
+  .flatMap((method) => [method, `${method}Sync`])
+  .sort((left, right) => right.length - left.length)
+  .join('|');
 
 const legacyDocumentOperationPatterns = [
   ['legacy-docs-discovery', /\bfind\b[^\n]*(?:\$\{?[^}\n]*(?:doc|metadata)[^}\n]*\}?|(?:^|[\s"'`])docs\/)/iu],
   ['shell-document-append', />>\s*["']?\$\{?[^}\n]*(?:doc|metadata)[^}\n]*\}?/iu],
-  ['metadata-directory-write', /\bmkdir\b[^\n]*(?:\$\{?[^}\n]*(?:doc|metadata)[^}\n]*\}?|(?:^|[\s"'`])docs\/)/iu],
+  ['metadata-directory-write', /\bmkdir(?:Sync)?\b[^\n]*(?:\$\{?[^}\n]*(?:doc|metadata)[^}\n]*\}?|(?:^|[\s"'`])docs\/)/iu],
   ['metadata-file-write', /\b(?:writeFile(?:Sync)?|appendFile(?:Sync)?|rename(?:Sync)?|copyFile(?:Sync)?|unlink(?:Sync)?|rm(?:Sync)?)\s*\([\s\S]{0,240}?(?:\$\{?[^}\n]*(?:doc|metadata)[^}\n]*\}?|(?:^|[\s"'`])docs\/)/iu],
   ['docs-core-archive', /\bnode\b[^\n]*(?:docs[_-]?core|docs-core\.js)[^\n]*\barchive\b/iu]
 ];
@@ -99,10 +110,105 @@ async function isRuntimeTextPath(file) {
   return ((await stat(file)).mode & 0o111) !== 0;
 }
 
-function legacyDocumentOperations(content) {
-  return legacyDocumentOperationPatterns
+function escapeRegex(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/gu, '\\$&');
+}
+
+function isNodeFsMutationMethod(method) {
+  return nodeFsMutationMethods.has(method) ||
+    (method.endsWith('Sync') && nodeFsMutationMethods.has(method.slice(0, -4)));
+}
+
+function destructuredNodeFsBindings(content, pattern, moduleBindings, directMutationBindings) {
+  for (const match of content.matchAll(pattern)) {
+    for (const part of match[1].split(',')) {
+      const binding = /^\s*([A-Za-z_$][\w$]*)(?:\s*(?::|\bas\b)\s*([A-Za-z_$][\w$]*))?\s*$/u.exec(part);
+      if (!binding) continue;
+      const [, imported, local = imported] = binding;
+      if (imported === 'promises') moduleBindings.add(local);
+      if (isNodeFsMutationMethod(imported)) directMutationBindings.add(local);
+    }
+  }
+}
+
+function hasNodeFsMutation(content) {
+  const nodeFsModule = String.raw`(?:node:)?fs(?:/promises)?`;
+  const moduleBindings = new Set();
+  const directMutationBindings = new Set();
+
+  for (const match of content.matchAll(new RegExp(
+    String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\(\s*['"]${nodeFsModule}['"]\s*\)`,
+    'gu'
+  ))) moduleBindings.add(match[1]);
+  for (const match of content.matchAll(new RegExp(
+    String.raw`\bimport\s+(?:\*\s+as\s+)?([A-Za-z_$][\w$]*)\s+from\s+['"]${nodeFsModule}['"]`,
+    'gu'
+  ))) moduleBindings.add(match[1]);
+
+  const cjsDestructure = new RegExp(
+    String.raw`\b(?:const|let|var)\s*\{([^}]+)\}\s*=\s*require\(\s*['"]${nodeFsModule}['"]\s*\)`,
+    'gu'
+  );
+  const esmDestructure = new RegExp(
+    String.raw`\bimport\s*\{([^}]+)\}\s*from\s*['"]${nodeFsModule}['"]`,
+    'gu'
+  );
+  destructuredNodeFsBindings(content, cjsDestructure, moduleBindings, directMutationBindings);
+  destructuredNodeFsBindings(content, esmDestructure, moduleBindings, directMutationBindings);
+
+  const methodProperty = String.raw`(?:(?:\.|\?\.)\s*(?:${nodeFsMutationMethodPattern})|\[\s*['"](?:${nodeFsMutationMethodPattern})['"]\s*\])`;
+  const directRequireAlias = new RegExp(
+    String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*require\(\s*['"]${nodeFsModule}['"]\s*\)\s*${methodProperty}`,
+    'gu'
+  );
+  for (const match of content.matchAll(directRequireAlias)) directMutationBindings.add(match[1]);
+
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const binding of [...moduleBindings]) {
+      const aliasPattern = new RegExp(
+        String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*${escapeRegex(binding)}\s*(?:\.|\?\.)\s*promises\b`,
+        'gu'
+      );
+      for (const match of content.matchAll(aliasPattern)) {
+        if (!moduleBindings.has(match[1])) {
+          moduleBindings.add(match[1]);
+          changed = true;
+        }
+      }
+    }
+  }
+
+  const methodInvocation = String.raw`${methodProperty}\s*(?:(?:\?\.)?\s*\(|(?:\.|\?\.)\s*(?:apply|bind|call)\s*\()`;
+  const memberPath = String.raw`(?:\s*(?:\.|\?\.)\s*[A-Za-z_$][\w$]*)*`;
+  if (new RegExp(String.raw`require\(\s*['"]${nodeFsModule}['"]\s*\)(?:\s*(?:\.|\?\.)\s*promises)?\s*${methodInvocation}`, 'u').test(content)) {
+    return true;
+  }
+  for (const binding of moduleBindings) {
+    if (new RegExp(String.raw`\b${escapeRegex(binding)}${memberPath}\s*${methodInvocation}`, 'u').test(content)) return true;
+    const aliasPattern = new RegExp(
+      String.raw`\b(?:const|let|var)\s+([A-Za-z_$][\w$]*)\s*=\s*${escapeRegex(binding)}${memberPath}\s*${methodProperty}`,
+      'gu'
+    );
+    for (const match of content.matchAll(aliasPattern)) directMutationBindings.add(match[1]);
+  }
+  for (const binding of directMutationBindings) {
+    if (new RegExp(String.raw`\b${escapeRegex(binding)}\s*\(`, 'u').test(content)) return true;
+  }
+  return false;
+}
+
+function legacyDocumentOperations(content, { includeNodeFsMutations = true } = {}) {
+  const operations = legacyDocumentOperationPatterns
     .filter(([, pattern]) => pattern.test(content))
     .map(([id]) => id);
+  if (includeNodeFsMutations && hasNodeFsMutation(content)) operations.push('node-fs-mutation');
+  return operations;
+}
+
+function isNodeFsMutationAuditCandidate(rel) {
+  return rel.startsWith('scripts/') || rel === 'hooks/session-end.sh';
 }
 
 test('daily workflow skills route document operations through the shared runtime', async () => {
@@ -172,6 +278,7 @@ test('read and write workflow contracts retain their workflow gates through runt
 });
 
 test('repository audit rejects direct document operations outside the exact allowlist or Task 7 exception', async () => {
+  assert.equal(lowLevelWriteAllowlist.has('scripts/migrate-docs.js'), false);
   const allFiles = await walk(repoRoot);
   const textFlags = await Promise.all(allFiles.map(isRuntimeTextPath));
   const files = allFiles.filter((_, index) => textFlags[index]);
@@ -180,7 +287,9 @@ test('repository audit rejects direct document operations outside the exact allo
   for (const file of files) {
     const rel = relative(file);
     const content = await readFile(file, 'utf8');
-    const operationIds = legacyDocumentOperations(content);
+    const operationIds = legacyDocumentOperations(content, {
+      includeNodeFsMutations: isNodeFsMutationAuditCandidate(rel)
+    });
     if (operationIds.length === 0 || lowLevelWriteAllowlist.has(rel)) continue;
 
     const exception = temporaryLegacyDocumentExceptions.get(rel);
@@ -213,6 +322,56 @@ test('audit recognizes indirect document variables and includes .cjs candidates'
     'metadata-file-write',
     'docs-core-archive'
   ]));
+
+  assert.deepEqual(new Set(legacyDocumentOperations(
+    'fs.mkdirSync(`${metadata_dir}/events`, { recursive: true });'
+  )), new Set(['metadata-directory-write']));
+});
+
+test('audit recognizes Node fs mutations through generic CJS bindings and property paths', () => {
+  assert.equal(isKnownRuntimeTextRelativePath('scripts/legacy-migration.cjs'), true);
+  const content = [
+    "const fileSystem = require('node:fs');",
+    "const disk = require('fs');",
+    'fileSystem.mkdirSync(path.dirname(rename.target), { recursive: true });',
+    'fileSystem.renameSync(rename.source, rename.target);',
+    'fileSystem.appendFileSync(merge.design, content);',
+    'fileSystem.unlinkSync(merge.decision);',
+    'disk.promises.writeFile(update.file, content);'
+  ].join('\n');
+
+  assert.deepEqual(new Set(legacyDocumentOperations(content)), new Set([
+    'node-fs-mutation'
+  ]));
+});
+
+test('audit follows Node fs method aliases and static property access', () => {
+  const cases = [
+    [
+      "const storage = require('node:fs');",
+      "const save = storage['writeFileSync'];",
+      'save(update.file, content);'
+    ].join('\n'),
+    [
+      "const { mkdirSync: makeDirectory } = require('fs');",
+      'makeDirectory(path.dirname(rename.target), { recursive: true });'
+    ].join('\n'),
+    [
+      "const save = require('node:fs')['writeFileSync'];",
+      "const target = path.join('docs', 'active', 'task.md');",
+      'save(target, content);'
+    ].join('\n'),
+    [
+      "import { createWriteStream as createWriter } from 'node:fs';",
+      'createWriter(update.file);'
+    ].join('\n')
+  ];
+
+  for (const content of cases) {
+    assert.deepEqual(new Set(legacyDocumentOperations(content)), new Set([
+      'node-fs-mutation'
+    ]));
+  }
 });
 
 test('the only deferred legacy hook stays behind the company-project early-exit gate', async (t) => {
