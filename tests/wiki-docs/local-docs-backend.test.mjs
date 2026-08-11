@@ -124,35 +124,43 @@ test('appends progress to an existing CRLF section without creating a duplicate 
   assert.match(content, /\r\n- \d{4}-\d{2}-\d{2}: CRLF progress update\r\n/u);
 });
 
-test('records and archives only explicitly referenced completed local documents', async () => {
-  const root = await retainedFixture('explicit-session-refs');
+test('archives every completed local active document when a session has no explicit references', async () => {
+  const root = await retainedFixture('unreferenced-completed-session-documents');
   const backend = new LocalDocsBackend({ projectRoot: root, projectId: 'fixture/local-docs' });
-  const referenced = await backend.create({
+  const firstCompleted = await backend.create({
     document_type: 'task',
-    title: 'Referenced complete task',
-    content: '# Referenced task\n\n## 基本信息\n- 状态: completed\n\n## 进展记录\n- 2026-08-10: ready\n'
+    title: 'First unreferenced complete task',
+    content: '# First unreferenced task\n\n## 基本信息\n- 状态: completed\n\n## 进展记录\n- 2026-08-10: ready\n'
   });
-  const unrelated = await backend.create({
+  const secondCompleted = await backend.create({
     document_type: 'task',
-    title: 'Unrelated complete task',
-    content: '# Unrelated task\n\n## 基本信息\n- 状态: completed\n\n## 进展记录\n- 2026-08-10: ready\n'
+    title: 'Legacy unreferenced complete task',
+    content: '# Legacy unreferenced task\n\n- 状态:已关闭\n'
   });
 
   const recorded = await backend.recordSession({
     session: {
-      session_id: 'explicit-session-refs',
+      session_id: 'unreferenced-completed-session-documents',
       ended_at: '2026-08-10T00:00:00Z',
       branch: 'feat/runtime-fixture'
     },
-    document_refs: [{ document_type: 'task', logical_id: 'referenced-complete-task' }],
+    document_refs: [],
     auto_archive_completed: true
   });
 
   assertLocalResult(recorded);
   assert.equal(recorded.status, 'recorded');
-  assert.equal(recorded.archived_count, 1);
-  await assert.rejects(readFile(referenced.document.path, 'utf8'), { code: 'ENOENT' });
-  assert.match(await readFile(unrelated.document.path, 'utf8'), /Unrelated task/u);
+  assert.equal(recorded.archived_count, 2);
+  await assert.rejects(readFile(firstCompleted.document.path, 'utf8'), { code: 'ENOENT' });
+  await assert.rejects(readFile(secondCompleted.document.path, 'utf8'), { code: 'ENOENT' });
+  assert.match(
+    await readFile(path.join(root, 'docs', 'archive', path.basename(firstCompleted.document.path)), 'utf8'),
+    /First unreferenced task/u
+  );
+  assert.match(
+    await readFile(path.join(root, 'docs', 'archive', path.basename(secondCompleted.document.path)), 'utf8'),
+    /Legacy unreferenced task/u
+  );
 });
 
 test('does not archive an active reference merely because historical progress mentions completion', async () => {

@@ -58,6 +58,15 @@ const EIGHT_CHARACTER_PADDING_OPAQUE_IDENTIFIER = OPAQUE_IDENTIFIER_CORE.match(/
 const LONG_PERIODIC_PADDING_PROJECT_IDENTIFIER = `group/${OPAQUE_IDENTIFIER_CORE.match(/.{1,2}/gu).join('000000010')}`;
 const DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER = OPAQUE_IDENTIFIER_CORE
   .split('').map(character => `x${character.charCodeAt(0).toString().padStart(3, '0')}`).join('');
+const UPPERCASE_DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER = OPAQUE_IDENTIFIER_CORE
+  .split('').map(character => `X${character.charCodeAt(0).toString().padStart(3, '0')}`).join('');
+const MIXED_CASE_DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER = OPAQUE_IDENTIFIER_CORE
+  .split('').map((character, index) => `${index % 2 === 0 ? 'X' : 'x'}${character.charCodeAt(0).toString().padStart(3, '0')}`).join('');
+const HIGH_ENTROPY_RELATIVE_PATH_CARRIER = '4e8a2c97f0b16d53a9c4e872f6b0d3195a7e2c84f9d13b60/x';
+const CROSS_SEGMENT_HIGH_ENTROPY_PATH_CARRIER = '4e8a2c97f0/b16d53a9c4/e872f6b0d3/195a7e2c84/f9d13b6012/fedc5a90b7/e3d4';
+const TWO_SEGMENT_HIGH_ENTROPY_PATH_CARRIER = '4e8a2c97f0b16d53a9/c4e872f6b0d3195a7e';
+const SEPARATOR_SPLIT_HIGH_ENTROPY_PATH_CARRIER = '4e8a2-c97f0/b16d5-3a9c4/e872f-6b0d3/195a7-e2c84/f9d13-b6012/fedc5-a90b7/e3d4';
+const READABLE_COMPONENT_PADDED_HIGH_ENTROPY_PATH_CARRIER = 'platform/4e8a2-c97f0/documentation/b16d5-3a9c4/e872f-6b0d3/195a7-e2c84';
 const FULLWIDTH_OPAQUE_PROJECT_IDENTIFIER = `fixture/${OPAQUE_IDENTIFIER_CORE.replace(/[a-z0-9]/gu, (character) =>
   String.fromCodePoint(character >= '0' && character <= '9'
     ? 0xff10 + Number(character)
@@ -228,6 +237,21 @@ test('rejects long periodic padding and semantic-looking opaque metadata identif
   }
 });
 
+test('rejects uppercase and mixed-case decimal character-code metadata identifiers', () => {
+  for (const [value, options] of [
+    [UPPERCASE_DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER, {}],
+    [MIXED_CASE_DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER, {}],
+    [`fixture/${UPPERCASE_DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER}`, { projectId: true }],
+    [`fixture/${MIXED_CASE_DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER}`, { projectId: true }]
+  ]) {
+    assert.deepEqual(
+      inspectSubmissionMetadataIdentifier(value, options),
+      { ok: false, category: 'high_entropy_credential' },
+      value
+    );
+  }
+});
+
 test('rejects bounded periodic low-complexity padding for logical and project metadata', () => {
   const core = OPAQUE_IDENTIFIER_CORE;
   const padding = (length, variant, index) => {
@@ -325,6 +349,147 @@ test('rejects unfenced executable source syntax rather than treating it as prose
   }
 });
 
+test('rejects copyable source syntax that follows ordinary prose', async () => {
+  const cases = [
+    ['JavaScript function', 'Explanation: function thunderclap(orbital) { return orbital === 47; }'],
+    ['TypeScript arrow function', 'Explanation: const thunderclap = (orbital: number): boolean => orbital === 47;'],
+    ['Python function', 'Explanation: def thunderclap(orbital): return orbital == 47'],
+    ['Go function', 'Explanation: func Thunderclap(orbital int) bool { return orbital == 47 }'],
+    ['JSON object', 'Explanation: {"orbital": 47, "enabled": true}']
+  ];
+
+  for (const [name, source] of cases) {
+    const value = validDocument();
+    value.sections[0].paragraphs = [source];
+    const result = await validate(value);
+    assert.equal(result.ok, false, name);
+    assert.equal(result.error_code, 'submission_safety_blocked', name);
+    assert.deepEqual(result.errors, [{ path: '$.sections[0].paragraphs[0]', code: 'source_syntax' }], name);
+    assert.equal(JSON.stringify(result).includes(source), false, name);
+  }
+});
+
+test('rejects a high-entropy token disguised as a relative path in free text', async () => {
+  const value = validDocument();
+  value.sections[0].paragraphs = [`Describe the bounded behavior for ${HIGH_ENTROPY_RELATIVE_PATH_CARRIER}.`];
+
+  const result = await validate(value);
+
+  assert.equal(result.ok, false);
+  assert.equal(result.error_code, 'submission_safety_blocked');
+  assert.deepEqual(result.errors, [{ path: '$.sections[0].paragraphs[0]', code: 'high_entropy_credential' }]);
+  assert.equal(JSON.stringify(result).includes(HIGH_ENTROPY_RELATIVE_PATH_CARRIER), false);
+});
+
+test('rejects high-entropy tokens disguised as structured relative paths without echoing them', async () => {
+  const dilutedPathCarrier = `${HIGH_ENTROPY_RELATIVE_PATH_CARRIER}/${Array(40).fill('a').join('/')}`;
+  const cases = [
+    ['file path', '$.sections[0].files[0].path', HIGH_ENTROPY_RELATIVE_PATH_CARRIER, (value, carrier) => {
+      value.sections[0].files[0].path = carrier;
+    }],
+    ['entropy-diluted file path', '$.sections[0].files[0].path', dilutedPathCarrier, (value, carrier) => {
+      value.sections[0].files[0].path = carrier;
+    }],
+    ['command argument', '$.sections[0].commands[0].args[1]', HIGH_ENTROPY_RELATIVE_PATH_CARRIER, (value, carrier) => {
+      value.sections[0].commands[0].args[1] = carrier;
+    }]
+  ];
+
+  for (const [name, path, carrier, mutate] of cases) {
+    const value = validDocument();
+    mutate(value, carrier);
+
+    const result = await validate(value);
+
+    assert.equal(result.ok, false, name);
+    assert.equal(result.error_code, 'submission_safety_blocked', name);
+    assert.deepEqual(result.errors, [{ path, code: 'high_entropy_credential' }], name);
+    assert.equal(JSON.stringify(result).includes(carrier), false, name);
+  }
+});
+
+test('rejects cross-segment high-entropy structured paths before they can be serialized', async () => {
+  const cases = [
+    ['three-segment file path', '$.sections[0].files[0].path', CROSS_SEGMENT_HIGH_ENTROPY_PATH_CARRIER, (value, carrier) => {
+      value.sections[0].files[0].path = carrier;
+    }],
+    ['three-segment command argument', '$.sections[0].commands[0].args[1]', CROSS_SEGMENT_HIGH_ENTROPY_PATH_CARRIER, (value, carrier) => {
+      value.sections[0].commands[0].args[1] = carrier;
+    }],
+    ['two-segment file path', '$.sections[0].files[0].path', TWO_SEGMENT_HIGH_ENTROPY_PATH_CARRIER, (value, carrier) => {
+      value.sections[0].files[0].path = carrier;
+    }],
+    ['two-segment command argument', '$.sections[0].commands[0].args[1]', TWO_SEGMENT_HIGH_ENTROPY_PATH_CARRIER, (value, carrier) => {
+      value.sections[0].commands[0].args[1] = carrier;
+    }],
+    ['separator-split file path', '$.sections[0].files[0].path', SEPARATOR_SPLIT_HIGH_ENTROPY_PATH_CARRIER, (value, carrier) => {
+      value.sections[0].files[0].path = carrier;
+    }],
+    ['separator-split command argument', '$.sections[0].commands[0].args[1]', SEPARATOR_SPLIT_HIGH_ENTROPY_PATH_CARRIER, (value, carrier) => {
+      value.sections[0].commands[0].args[1] = carrier;
+    }],
+    ['readable-component-padded file path', '$.sections[0].files[0].path', READABLE_COMPONENT_PADDED_HIGH_ENTROPY_PATH_CARRIER, (value, carrier) => {
+      value.sections[0].files[0].path = carrier;
+    }],
+    ['readable-component-padded command argument', '$.sections[0].commands[0].args[1]', READABLE_COMPONENT_PADDED_HIGH_ENTROPY_PATH_CARRIER, (value, carrier) => {
+      value.sections[0].commands[0].args[1] = carrier;
+    }]
+  ];
+
+  for (const [name, path, carrier, mutate] of cases) {
+    const value = validDocument();
+    mutate(value, carrier);
+
+    const result = await validate(value);
+
+    assert.equal(result.ok, false, name);
+    assert.equal(result.error_code, 'submission_safety_blocked', name);
+    assert.deepEqual(result.errors, [{ path, code: 'high_entropy_credential' }], name);
+    assert.equal(Object.hasOwn(result, 'markdown'), false, name);
+    assert.equal(JSON.stringify(result).includes(carrier), false, name);
+  }
+});
+
+test('rejects credential-shaped command arguments without relying on token entropy', async () => {
+  const cases = [
+    ['split token flag', ['--token', 'short-demo-value'], 0],
+    ['inline API key flag', ['--api-key=short-demo-value'], 0],
+    ['split API key assignment', ['API_KEY=', 'short-demo-value'], 0]
+  ];
+
+  for (const [name, args, invalidIndex] of cases) {
+    const value = validDocument();
+    value.sections[0].commands[0].args = args;
+
+    const result = await validate(value);
+
+    assert.equal(result.ok, false, name);
+    assert.equal(result.error_code, 'safe_document_required', name);
+    assert.deepEqual(result.errors, [{
+      path: `$.sections[0].commands[0].args[${invalidIndex}]`,
+      code: 'invalid_argument'
+    }], name);
+    assert.equal(JSON.stringify(result).includes('short-demo-value'), false, name);
+  }
+});
+
+test('retains ordinary relative paths through validation and serialization', async () => {
+  for (const ordinaryPath of [
+    'tests/wiki-docs/document-runtime-cli.test.mjs',
+    'document-runtime-cli.test.mjs',
+    'platform/documentation'
+  ]) {
+    const value = validDocument();
+    value.sections[0].files[0].path = ordinaryPath;
+    value.sections[0].commands[0].args[1] = ordinaryPath;
+
+    const result = await validate(value);
+
+    assert.equal(result.ok, true, ordinaryPath);
+    assert.ok(result.markdown.includes(ordinaryPath), ordinaryPath);
+  }
+});
+
 test('rejects sparse AST arrays and fails closed when the source scanner cannot run', async () => {
   const sparse = validDocument();
   sparse.sections = new Array(1);
@@ -369,4 +534,43 @@ test('enforces fixed limits and propagates source-similarity failures without ra
   });
   assert.equal(matchedPath.ok, false);
   assert.equal(matchedPath.errors[0].path, '$.sections[0].bullets[0]');
+});
+
+test('rejects Unicode-obscured high-entropy credentials in free-text paragraphs without echoing them', async () => {
+  const credential = 'aB3dE5fG7hJ9kLmNpQrStUvWxYz01234';
+  const fullwidthCredential = credential.replace(/[A-Za-z0-9]/gu, (character) => {
+    if (character >= '0' && character <= '9') return String.fromCodePoint(0xff10 + Number(character));
+    if (character >= 'A' && character <= 'Z') return String.fromCodePoint(0xff21 + character.charCodeAt(0) - 'A'.charCodeAt(0));
+    return String.fromCodePoint(0xff41 + character.charCodeAt(0) - 'a'.charCodeAt(0));
+  });
+  const zeroWidthInterleavedCredential = credential.split('').join('\u200b');
+
+  for (const [name, value] of [
+    ['NFKC fullwidth credential', fullwidthCredential],
+    ['zero-width interleaved credential', zeroWidthInterleavedCredential]
+  ]) {
+    const document = validDocument();
+    document.sections[0].paragraphs = [`Keep the credential out of the proposal: ${value}`];
+
+    const result = await validate(document);
+
+    assert.equal(result.ok, false, name);
+    assert.equal(result.error_code, 'submission_safety_blocked', name);
+    assert.deepEqual(result.errors, [{
+      path: '$.sections[0].paragraphs[0]',
+      code: 'high_entropy_credential'
+    }], name);
+    assert.equal(JSON.stringify(result).includes(value), false, name);
+    assert.equal(JSON.stringify(result).includes(credential), false, name);
+  }
+});
+
+test('retains ordinary Chinese prose and line breaks through the Unicode safety scan', async () => {
+  const document = validDocument();
+  document.sections[0].paragraphs = ['用简洁的中文说明预期行为。\n保留换行以表达独立约束。'];
+
+  const result = await validate(document);
+
+  assert.equal(result.ok, true);
+  assert.match(result.markdown, /用简洁的中文说明预期行为/u);
 });

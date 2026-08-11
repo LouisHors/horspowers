@@ -75,7 +75,7 @@ function machinePage(marker, value, prefix = '# Wiki page\n\n') {
   return `${prefix}<!-- ${marker}:start -->\n\`\`\`json\n${JSON.stringify(value, null, 2)}\n\`\`\`\n<!-- ${marker}:end -->\n`;
 }
 
-function projectConfig({ autoSubmit = true } = {}) {
+function projectConfig({ autoSubmit = true, enabled = true } = {}) {
   return {
     schema_version: 1,
     project_id: 'ugnas/ugcli-lib',
@@ -85,7 +85,7 @@ function projectConfig({ autoSubmit = true } = {}) {
     testing_strategy: 'tdd',
     completion_strategy: 'pr',
     documentation: {
-      enabled: true,
+      enabled,
       backend: 'wiki',
       collection: COLLECTION,
       root_uri: ROOT_URI,
@@ -1236,5 +1236,103 @@ test('uses the single auto-submit switch for every mutation variant', async () =
     const result = await fixture.backend.execute(item.action, item.request);
     assert.equal(result.status, 'confirmation_required', item.action);
     assert.equal(submitCalls, 0, item.action);
+  }
+});
+
+test('uses each exact Wiki config snapshot to gate single and batch mutations', async () => {
+  const initialConfig = projectConfig({ autoSubmit: true });
+  const cases = [
+    {
+      name: 'single mutation observes auto-submit disabled remotely',
+      config: projectConfig({ autoSubmit: false }),
+      invoke: (instance) => instance.create({
+        document_type: 'plan', logical_id: 'snapshot-plan', base_revision: 0,
+        content_kind: 'document', content: safeDocument()
+      }),
+      status: 'confirmation_required'
+    },
+    {
+      name: 'batch mutation observes auto-submit disabled remotely',
+      config: projectConfig({ autoSubmit: false }),
+      invoke: (instance) => instance.mutateBatch([{
+        operation: 'create', document_type: 'plan', logical_id: 'snapshot-batch-plan', base_revision: 0,
+        content_kind: 'document', content: safeDocument()
+      }]),
+      status: 'confirmation_required'
+    },
+    {
+      name: 'mutation observes documentation disabled remotely',
+      config: projectConfig({ autoSubmit: true, enabled: false }),
+      invoke: (instance) => instance.create({
+        document_type: 'plan', logical_id: 'disabled-snapshot-plan', base_revision: 0,
+        content_kind: 'document', content: safeDocument()
+      }),
+      status: 'documentation_disabled'
+    }
+  ];
+
+  for (const item of cases) {
+    let submitCalls = 0;
+    const fixture = backend({
+      config: initialConfig,
+      pages: pagesFor(item.config),
+      submitter: {
+        async submit() {
+          submitCalls += 1;
+          return { ok: true, filename: 'unexpected.md' };
+        }
+      }
+    });
+
+    const result = await item.invoke(fixture.backend);
+
+    assert.equal(result.status, item.status, item.name);
+    assert.equal(submitCalls, 0, item.name);
+    assert.deepEqual(fixture.qmd.exactCalls, [MANIFEST_URI, CONFIG_URI], item.name);
+  }
+});
+
+test('blocks Unicode-obscured credentials before auto-submit can write an Inbox revision', async () => {
+  const credential = 'aB3dE5fG7hJ9kLmNpQrStUvWxYz01234';
+  const fullwidthCredential = credential.replace(/[A-Za-z0-9]/gu, (character) => {
+    if (character >= '0' && character <= '9') return String.fromCodePoint(0xff10 + Number(character));
+    if (character >= 'A' && character <= 'Z') return String.fromCodePoint(0xff21 + character.charCodeAt(0) - 'A'.charCodeAt(0));
+    return String.fromCodePoint(0xff41 + character.charCodeAt(0) - 'a'.charCodeAt(0));
+  });
+  const zeroWidthInterleavedCredential = credential.split('').join('\u200b');
+
+  for (const [name, value] of [
+    ['NFKC fullwidth credential', fullwidthCredential],
+    ['zero-width interleaved credential', zeroWidthInterleavedCredential]
+  ]) {
+    let submitCalls = 0;
+    const fixture = backend({
+      autoSubmit: true,
+      serializeSafeDocument: async (content) => validateAndSerializeSafeDocument(content, '/retained-fixture/company-project', {
+        sourceSimilarityGuard: async () => ({ ok: true })
+      }),
+      submitter: {
+        async submit() {
+          submitCalls += 1;
+          return { ok: true, filename: 'unexpected.md' };
+        }
+      }
+    });
+    const content = safeDocument();
+    content.sections[0].paragraphs = [`Do not submit this value: ${value}`];
+
+    const result = await fixture.backend.create({
+      document_type: 'plan',
+      logical_id: 'unicode-safety-plan',
+      base_revision: 0,
+      content_kind: 'document',
+      content
+    });
+
+    assert.equal(result.status, 'submission_safety_blocked', name);
+    assert.equal(result.errors?.[0]?.code, 'high_entropy_credential', name);
+    assert.equal(submitCalls, 0, name);
+    assert.equal(JSON.stringify(result).includes(value), false, name);
+    assert.equal(JSON.stringify(result).includes(credential), false, name);
   }
 });

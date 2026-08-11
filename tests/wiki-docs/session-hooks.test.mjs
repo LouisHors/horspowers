@@ -286,6 +286,38 @@ test('SessionEnd derives legacy document names only after a local runtime resolv
   assert.equal(JSON.stringify(requests[1]).includes('docs/active'), false);
 });
 
+test('SessionEnd uses the real local runtime to archive completed active documents without explicit references', async () => {
+  const root = await fixture('session-end-local-unreferenced-completed', 'https://github.com/example/session-hook-fixture.git');
+  const fakeHome = path.join(root, 'fake-home');
+  const completed = path.join(root, 'docs', 'active', '2026-08-10-task-unreferenced-completed.md');
+  await mkdir(path.dirname(completed), { recursive: true });
+  await mkdir(fakeHome, { recursive: true });
+  await writeFile(path.join(root, '.horspowers-config.yaml'), localConfig(), 'utf8');
+  await writeFile(
+    completed,
+    '# Completed local task\n\n- 状态:已完成\n',
+    'utf8'
+  );
+
+  const result = await runHook('session-end.sh', {
+    cwd: root,
+    env: {
+      HOME: fakeHome,
+      CLAUDE_SESSION_ID: 'opaque-session-id',
+      TASK_DOC: '',
+      BUG_DOC: '',
+      HORSPOWERS_SESSION_DOCUMENT_REFS_JSON: ''
+    }
+  });
+
+  assert.match(hookContext(result), /recorded/u);
+  await assert.rejects(readFile(completed, 'utf8'), { code: 'ENOENT' });
+  assert.match(
+    await readFile(path.join(root, 'docs', 'archive', path.basename(completed)), 'utf8'),
+    /Completed local task/u
+  );
+});
+
 test('SessionEnd reports unavailable company documentation without runtime stderr leakage', async () => {
   const root = await fixture('session-end-wiki-unavailable', 'ssh://git@gitlab.ugnas.com/platform/ugcli-lib.git');
   const runtime = await fakeRuntime('session-end-wiki-unavailable');

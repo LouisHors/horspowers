@@ -88,18 +88,80 @@ test('plans initialization for a normal Git root and its nested directory', asyn
   assert.equal(nestedPlan.project_root, root);
 });
 
-test('plans initialization for an explicitly marked non-Git project only', async () => {
-  const marked = await retainedFixture('marked-project');
-  const ordinary = path.join(path.parse(repoRoot).root, 'usr');
+test('uses an explicit marker only after confirming an ordinary Git remote', async () => {
+  const marked = await gitFixture('marked-project');
   await writeFile(path.join(marked, '.horspowers-project-root'), '', 'utf8');
 
   const markedPlan = await planProjectInitialization({ cwd: marked, homeDir: homedir(), tempDir: tmpdir() });
-  const ordinaryPlan = await planProjectInitialization({ cwd: ordinary, homeDir: homedir(), tempDir: tmpdir() });
 
   assert.equal(markedPlan.eligibility, 'project');
   assert.equal(markedPlan.project_root, marked);
-  assert.equal(ordinaryPlan.eligibility, 'skipped');
-  assert.equal(ordinaryPlan.reason, 'not_a_project');
+});
+
+test('does not use a marker above a Git root as the project root', async () => {
+  const container = await retainedFixture('marker-above-git-root');
+  const gitRoot = path.join(container, 'repository');
+  const nested = path.join(gitRoot, 'src/feature');
+  await mkdir(nested, { recursive: true });
+  await run('git', ['init', '--quiet'], { cwd: gitRoot });
+  await run('git', ['remote', 'add', 'origin', 'https://github.com/example/fixture.git'], { cwd: gitRoot });
+  await writeFile(path.join(container, '.horspowers-project-root'), '', 'utf8');
+
+  const plan = await planProjectInitialization({ cwd: nested, homeDir: homedir(), tempDir: tmpdir() });
+  const result = await applyProjectInitialization(plan);
+
+  assert.equal(plan.eligibility, 'project');
+  assert.equal(plan.project_root, gitRoot);
+  assert.equal(result.config.status, 'created');
+  assert.equal(result.docs.status, 'created');
+  await access(path.join(gitRoot, '.horspowers-config.yaml'), constants.F_OK);
+  await assert.rejects(access(path.join(container, '.horspowers-config.yaml'), constants.F_OK));
+  await assert.rejects(access(path.join(container, 'docs'), constants.F_OK));
+});
+
+test('continues to find a marker nested inside a confirmed Git root', async () => {
+  const gitRoot = await gitFixture('marker-inside-git-root');
+  const markedRoot = path.join(gitRoot, 'packages/widget');
+  const nested = path.join(markedRoot, 'src');
+  await mkdir(nested, { recursive: true });
+  await writeFile(path.join(markedRoot, '.horspowers-project-root'), '', 'utf8');
+
+  const plan = await planProjectInitialization({ cwd: nested, homeDir: homedir(), tempDir: tmpdir() });
+
+  assert.equal(plan.eligibility, 'project');
+  assert.equal(plan.project_root, markedRoot);
+  assert.equal(plan.config_action, 'create');
+});
+
+test('does not let a marker initialize directories without a confirmed ordinary Git remote', async () => {
+  const unconfirmedGitRoot = await retainedFixture('marked-unconfirmed-git');
+  const noRemoteRoot = await gitFixture('marked-no-remote', { remoteUrl: null });
+  await writeFile(path.join(unconfirmedGitRoot, '.git'), 'not a gitdir\n', 'utf8');
+  const cases = [
+    {
+      root: unconfirmedGitRoot,
+      expectedPlan: { eligibility: 'skipped', reason: 'not_a_project' },
+      expectedResult: { config: { status: 'skipped' }, docs: { status: 'skipped' } }
+    },
+    {
+      root: noRemoteRoot,
+      expectedPlan: { eligibility: 'external_project', reason: 'unregistered_no_remote' },
+      expectedResult: { config: { status: 'external_required' }, docs: { status: 'skipped' } }
+    }
+  ];
+
+  for (const { root, expectedPlan, expectedResult } of cases) {
+    await writeFile(path.join(root, '.horspowers-project-root'), '', 'utf8');
+    const before = await snapshotTree(root);
+    const plan = await planProjectInitialization({ cwd: root, homeDir: homedir(), tempDir: tmpdir() });
+    const result = await applyProjectInitialization(plan);
+    const after = await snapshotTree(root);
+
+    assert.deepEqual(after, before, root);
+    assert.equal(plan.eligibility, expectedPlan.eligibility, root);
+    assert.equal(plan.reason, expectedPlan.reason, root);
+    assert.deepEqual(result, expectedResult, root);
+  }
 });
 
 test('rejects sensitive roots, opt-out projects, Wiki-native projects, and Wiki symlinks', async () => {

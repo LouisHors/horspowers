@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
+import { execFile, spawn } from 'node:child_process';
 import { createHash } from 'node:crypto';
 import { EventEmitter } from 'node:events';
 import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
@@ -15,6 +15,7 @@ import { readHostConfig } from '../../lib/host-config.mjs';
 import { InboxSubmitter } from '../../lib/inbox-submitter.mjs';
 import { classifyRepositoryRemotes } from '../../lib/project-identity.mjs';
 import { resolveProjectContext } from '../../lib/project-context.mjs';
+import { QmdMcpClient } from '../../lib/qmd-mcp-client.mjs';
 import { validateAndSerializeSafeDocument } from '../../lib/submission-safety.mjs';
 
 const require = createRequire(import.meta.url);
@@ -30,6 +31,7 @@ const MANIFEST_URI = `${ROOT_URI}/index.md`;
 const ACTIVE_TASK_URI = `${ROOT_URI}/tasks/active-task.md`;
 const COMPLETED_TASK_URI = `${ROOT_URI}/tasks/completed-task.md`;
 const DEFAULT_FINGERPRINT = `sha256:${'a'.repeat(64)}`;
+const fakeQmdMcpPath = path.join(path.dirname(fileURLToPath(import.meta.url)), 'fixtures', 'fake-qmd-mcp.mjs');
 let fixtureSequence = 0;
 
 function sha256(value) {
@@ -152,18 +154,30 @@ function localConfigText() {
   ].join('\n');
 }
 
-function fakeQmd(pages) {
-  const exactCalls = [];
-  return {
-    exactCalls,
-    client: {
-      async getExact(uri) {
-        exactCalls.push(uri);
-        if (!pages.has(uri)) return { ok: false, error_code: 'fixture_qmd_not_found' };
-        return { ok: true, result: { content: [{ type: 'text', text: pages.get(uri) }] } };
+function fakeQmd(pages, { collection, transport, tracePath }) {
+  const spawnCalls = [];
+  const spawnImpl = (command, args, options) => {
+    spawnCalls.push({ command, args, options });
+    return spawn(process.execPath, [fakeQmdMcpPath], {
+      env: {
+        ...process.env,
+        FAKE_QMD_MCP_MODE: 'fixture_pages',
+        FAKE_QMD_MCP_PAGES_JSON: JSON.stringify(Object.fromEntries(pages)),
+        FAKE_QMD_MCP_TRACE_FILE: tracePath
       },
-      async search() {
-        return { ok: true, result: { structuredContent: { results: [] } } };
+      shell: false,
+      stdio: ['pipe', 'pipe', 'pipe']
+    });
+  };
+  return {
+    spawnCalls,
+    client: new QmdMcpClient({ collection, transport }, { spawnImpl }),
+    async rpcRequests() {
+      try {
+        return (await readFile(tracePath, 'utf8')).trim().split('\n').filter(Boolean).map(JSON.parse);
+      } catch (error) {
+        if (error?.code === 'ENOENT') return [];
+        throw error;
       }
     }
   };
@@ -396,7 +410,11 @@ async function makeWikiFixture({
   await writeFile(hostPath, JSON.stringify(hostConfig, null, 2), 'utf8');
   await writeFile(path.join(root, '.horspowers-config.yaml'), localConfigText(), 'utf8');
 
-  const qmd = fakeQmd(pages);
+  const qmd = fakeQmd(pages, {
+    collection: hostConfig.wiki.collection,
+    transport: hostConfig.wiki.transport,
+    tracePath: path.join(artifactsRoot, `${path.basename(root)}-qmd-rpc.jsonl`)
+  });
   const receiver = fakeInboxReceiver();
   const localConfigReads = { count: 0 };
   const dependencies = {
@@ -531,6 +549,40 @@ test('company Wiki submissions remain unavailable until a local reviewer admits 
   assert.equal(afterAdmission.status, 'ok');
   assert.equal(afterAdmission.document.revision, 1);
   assert.match(afterAdmission.document.content, /Pending fixture design/u);
+  assert.deepEqual(await snapshotTree(fixture.root), before);
+});
+
+test('end-to-end fixture reads Registry, config, manifest, and documents through QmdMcpClient JSON-RPC get calls', async () => {
+  const fixture = await makeWikiFixture({ name: 'qmd-mcp-transport-chain' });
+  const before = await snapshotTree(fixture.root);
+
+  assert.ok(fixture.qmd.client instanceof QmdMcpClient);
+  const result = await fixture.runtime.execute({
+    cwd: fixture.root,
+    action: 'get',
+    request: { logical_id: 'active-task' }
+  });
+
+  assert.equal(result.status, 'ok');
+  assert.match(result.document.content, /Active fixture task/u);
+  const requests = await fixture.qmd.rpcRequests();
+  const gets = requests.filter((request) => request.method === 'tools/call');
+  assert.deepEqual(gets.map((request) => request.params?.name), Array(gets.length).fill('get'));
+  assert.deepEqual(gets.map((request) => request.params?.arguments), [
+    { file: REGISTRY_URI, fromLine: 1, maxLines: 4000, lineNumbers: false },
+    { file: CONFIG_URI, fromLine: 1, maxLines: 4000, lineNumbers: false },
+    { file: MANIFEST_URI, fromLine: 1, maxLines: 4000, lineNumbers: false },
+    { file: MANIFEST_URI, fromLine: 1, maxLines: 4000, lineNumbers: false },
+    { file: CONFIG_URI, fromLine: 1, maxLines: 4000, lineNumbers: false },
+    { file: ACTIVE_TASK_URI, fromLine: 1, maxLines: 4000, lineNumbers: false }
+  ]);
+  assert.equal(fixture.qmd.spawnCalls.length, gets.length);
+  for (const call of fixture.qmd.spawnCalls) {
+    assert.equal(call.command, 'ssh');
+    assert.deepEqual(call.args, ['-T', 'fixturewiki']);
+    assert.equal(call.options.shell, false);
+    assert.deepEqual(call.options.stdio, ['pipe', 'pipe', 'pipe']);
+  }
   assert.deepEqual(await snapshotTree(fixture.root), before);
 });
 
