@@ -137,6 +137,10 @@ function acceptedSearchExit(result) {
 
 export async function spawnCommand({ command, args, cwd, timeoutMs, signal }) {
   return new Promise((resolve) => {
+    if (signal?.aborted) {
+      resolve({ code: 1, stdout: '', stderr: '', timed_out: true, truncated: false, error: null });
+      return;
+    }
     let stdout = Buffer.alloc(0);
     let stderr = Buffer.alloc(0);
     let timedOut = false;
@@ -171,18 +175,28 @@ export async function spawnCommand({ command, args, cwd, timeoutMs, signal }) {
   });
 }
 
-async function commandAvailable(command, cwd) {
-  const result = await spawnCommand({ command, args: ['--version'], cwd, timeoutMs: 500, signal: null });
+async function commandAvailable(command, cwd, signal) {
+  const result = await spawnCommand({ command, args: ['--version'], cwd, timeoutMs: 500, signal });
   return result.code === 0;
 }
 
-async function detectCapabilities(cwd) {
-  const [rg, qmd, git, grep] = await Promise.all(['rg', 'qmd', 'git', 'grep'].map((command) => commandAvailable(command, cwd)));
-  const gitRoot = git ? await spawnCommand({ command: 'git', args: ['rev-parse', '--is-inside-work-tree'], cwd, timeoutMs: 500, signal: null }) : { code: 1 };
+async function defaultResolveRuntime(cwd) {
+  try {
+    const { DocumentRuntime } = await import('../../../lib/document-runtime.mjs');
+    return await DocumentRuntime.resolve(cwd);
+  } catch {
+    return null;
+  }
+}
+
+async function detectCapabilities(cwd, wikiSearchEnabled, signal) {
+  const [rg, git, grep] = await Promise.all(['rg', 'git', 'grep'].map((command) => commandAvailable(command, cwd, signal)));
+  const qmd = wikiSearchEnabled && await commandAvailable('qmd', cwd, signal);
+  const gitRoot = git ? await spawnCommand({ command: 'git', args: ['rev-parse', '--is-inside-work-tree'], cwd, timeoutMs: 500, signal }) : { code: 1 };
   const untracked = gitRoot.code === 0
-    ? await spawnCommand({ command: 'git', args: ['status', '--porcelain', '--untracked-files=all'], cwd, timeoutMs: 500, signal: null })
+    ? await spawnCommand({ command: 'git', args: ['status', '--porcelain', '--untracked-files=all'], cwd, timeoutMs: 500, signal })
     : { stdout: '' };
-  const grepHelp = grep ? await spawnCommand({ command: 'grep', args: ['--help'], cwd, timeoutMs: 500, signal: null }) : { stdout: '' };
+  const grepHelp = grep ? await spawnCommand({ command: 'grep', args: ['--help'], cwd, timeoutMs: 500, signal }) : { stdout: '' };
   return {
     rg,
     qmd,
@@ -240,8 +254,11 @@ async function collectRepository(context, dependencies, signal) {
 
 async function collectWiki(context, dependencies, signal) {
   const started = performance.now();
-  const { capabilities, runCommand } = dependencies;
+  const { capabilities, runCommand, runtimeResult } = dependencies;
   try {
+    if (runtimeResult?.identity_status !== 'external') {
+      return branch({ status: 'skipped', errorCode: 'DOCUMENT_RUNTIME_REQUIRED', durationMs: performance.now() - started });
+    }
     if (capabilities.qmd) {
       const search = await runSearch(runCommand, 'qmd', ['search', context.query, '-c', 'my-code-wiki', '-n', '8'], context.cwd, 4_000, signal);
       if (search.timed_out) return branch({ status: 'timeout', tool: 'qmd search', durationMs: performance.now() - started, truncated: true, errorCode: 'TIMEOUT' });
@@ -311,8 +328,47 @@ async function defaultReadFile(filePath, maxBytes) {
   return content.subarray(0, maxBytes).toString('utf8');
 }
 
-function timeoutBranch() {
-  return branch({ status: 'timeout', durationMs: OVERALL_TIMEOUT_MS, truncated: true, errorCode: 'TIMEOUT' });
+function timeoutBranch(durationMs = OVERALL_TIMEOUT_MS) {
+  return branch({ status: 'timeout', durationMs, truncated: true, errorCode: 'TIMEOUT' });
+}
+
+function waitForDeadline(factory, signal) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (value) => {
+      if (settled) return;
+      settled = true;
+      signal.removeEventListener('abort', onAbort);
+      resolve(value);
+    };
+    const onAbort = () => finish({ timedOut: true, value: null });
+    if (signal.aborted) {
+      onAbort();
+      return;
+    }
+    signal.addEventListener('abort', onAbort, { once: true });
+    Promise.resolve().then(factory).then(
+      (value) => finish({ timedOut: false, value }),
+      () => finish({ timedOut: false, value: null })
+    );
+  });
+}
+
+function earlyTimeoutOutput(context, started) {
+  const durationMs = performance.now() - started;
+  return enforceFinalCap({
+    schema_version: SCHEMA_VERSION,
+    query: context.query,
+    branches: {
+      wiki: branch({ status: 'skipped', durationMs, truncated: true, errorCode: 'DOCUMENT_RUNTIME_REQUIRED' }),
+      repository: timeoutBranch(durationMs),
+      git: timeoutBranch(durationMs),
+      entries: timeoutBranch(durationMs)
+    },
+    sensitive_files_skipped: 0,
+    total_duration_ms: Math.round(durationMs),
+    truncated: true
+  });
 }
 
 function enforceFinalCap(output) {
@@ -327,50 +383,71 @@ function enforceFinalCap(output) {
 
 export async function collectContext(input, overrides = {}) {
   const context = validateContextInput(input);
-  const capabilities = overrides.capabilities ?? await detectCapabilities(context.cwd);
-  const dependencies = {
-    capabilities,
-    runCommand: overrides.runCommand ?? spawnCommand,
-    readFile: overrides.readFile ?? defaultReadFile
-  };
   const overallTimeoutMs = overrides.overallTimeoutMs ?? OVERALL_TIMEOUT_MS;
   const controller = new AbortController();
   const started = performance.now();
-  const states = {};
-  let sensitiveFilesSkipped = 0;
-  const jobs = {
-    wiki: collectWiki(context, dependencies, controller.signal),
-    repository: collectRepository(context, dependencies, controller.signal),
-    git: collectGit(context, dependencies, controller.signal),
-    entries: collectEntries(context, dependencies, controller.signal)
-  };
-  const tracked = Object.entries(jobs).map(([name, promise]) => Promise.resolve(promise).then((value) => {
-    if (name === 'entries') {
-      states.entries = value.result;
-      sensitiveFilesSkipped += value.sensitive;
-    } else states[name] = value;
-  }).catch(() => { states[name] = branch({ status: 'failed', errorCode: 'COMMAND_FAILED' }); }));
   let timedOut = false;
-  let deadline;
-  await Promise.race([
-    Promise.allSettled(tracked),
-    new Promise((resolve) => {
-      deadline = setTimeout(() => { timedOut = true; controller.abort(); resolve(); }, overallTimeoutMs);
-    })
-  ]);
-  clearTimeout(deadline);
-  for (const name of ['wiki', 'repository', 'git', 'entries']) {
-    if (!states[name]) states[name] = timeoutBranch();
+  const deadline = setTimeout(() => {
+    timedOut = true;
+    controller.abort();
+  }, overallTimeoutMs);
+  const resolveRuntime = overrides.resolveRuntime ?? defaultResolveRuntime;
+  try {
+    const resolved = await waitForDeadline(() => resolveRuntime(context.cwd), controller.signal);
+    const runtimeResult = resolved.value;
+    if (timedOut || resolved.timedOut) return earlyTimeoutOutput(context, started);
+
+    let capabilities = overrides.capabilities;
+    if (!capabilities) {
+      const detected = await waitForDeadline(
+        () => detectCapabilities(context.cwd, runtimeResult?.identity_status === 'external', controller.signal),
+        controller.signal
+      );
+      if (timedOut || detected.timedOut) return earlyTimeoutOutput(context, started);
+      capabilities = detected.value;
+    }
+    const dependencies = {
+      capabilities,
+      runCommand: overrides.runCommand ?? spawnCommand,
+      readFile: overrides.readFile ?? defaultReadFile,
+      runtimeResult
+    };
+    const states = {};
+    let sensitiveFilesSkipped = 0;
+    const jobs = {
+      wiki: collectWiki(context, dependencies, controller.signal),
+      repository: collectRepository(context, dependencies, controller.signal),
+      git: collectGit(context, dependencies, controller.signal),
+      entries: collectEntries(context, dependencies, controller.signal)
+    };
+    const tracked = Object.entries(jobs).map(([name, promise]) => Promise.resolve(promise).then((value) => {
+      if (name === 'entries') {
+        states.entries = value.result;
+        sensitiveFilesSkipped += value.sensitive;
+      } else states[name] = value;
+    }).catch(() => { states[name] = branch({ status: 'failed', errorCode: 'COMMAND_FAILED' }); }));
+    await Promise.race([
+      Promise.allSettled(tracked),
+      controller.signal.aborted
+        ? Promise.resolve()
+        : new Promise((resolve) => controller.signal.addEventListener('abort', resolve, { once: true }))
+    ]);
+    const durationMs = performance.now() - started;
+    for (const name of ['wiki', 'repository', 'git', 'entries']) {
+      if (!states[name]) states[name] = timeoutBranch(durationMs);
+    }
+    const output = {
+      schema_version: SCHEMA_VERSION,
+      query: context.query,
+      branches: { wiki: states.wiki, repository: states.repository, git: states.git, entries: states.entries },
+      sensitive_files_skipped: sensitiveFilesSkipped,
+      total_duration_ms: Math.round(durationMs),
+      truncated: timedOut || Object.values(states).some((value) => value.truncated)
+    };
+    return enforceFinalCap(output);
+  } finally {
+    clearTimeout(deadline);
   }
-  const output = {
-    schema_version: SCHEMA_VERSION,
-    query: context.query,
-    branches: { wiki: states.wiki, repository: states.repository, git: states.git, entries: states.entries },
-    sensitive_files_skipped: sensitiveFilesSkipped,
-    total_duration_ms: Math.round(performance.now() - started),
-    truncated: timedOut || Object.values(states).some((value) => value.truncated)
-  };
-  return enforceFinalCap(output);
 }
 
 async function runCli() {

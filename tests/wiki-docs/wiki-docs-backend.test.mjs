@@ -13,6 +13,59 @@ const TASK_URI = `${ROOT_URI}/tasks/implement-feature.md`;
 const FINGERPRINT = `sha256:${'a'.repeat(64)}`;
 const LOW_ENTROPY_IDENTIFIER_PADDING = 'a'.repeat(40);
 const OPAQUE_IDENTIFIER_SEGMENTS = ['abcdefghij', 'klmnopqrst', 'uvwxyz012345'];
+const INTERLEAVED_OPAQUE_IDENTIFIER = ['a3d5e7f', 'g9h2j4k', 'm6n8p0q', 'r2s4t6u'].join('a'.repeat(12));
+const SHORT_INTERLEAVED_OPAQUE_IDENTIFIER = ['a3d5e7f', 'g9h2j4k', 'm6n8p0q', 'r2s4t6u'].join('a'.repeat(7));
+const REPEATED_NON_PERIODIC_INTERLEAVED_OPAQUE_IDENTIFIER =
+  ['a3d5e7f', 'g9h2j4k', 'm6n8p0q', 'r2s4t6u'].join('000000010');
+const SHORTER_INTERLEAVED_OPAQUE_IDENTIFIER = ['a3d5e7', 'g9h2j4', 'm6n8p0', 'r2s4t6'].join('a'.repeat(5));
+const VARIED_TERNARY_INTERLEAVED_OPAQUE_IDENTIFIER = [
+  'a3d5e7f', 'aaabacaaabcb', 'g9h2j4k', 'aacaabaaacbc', 'm6n8p0q', 'abaacaaaabcb', 'r2s4t6u'
+].join('');
+const LOW_ENTROPY_SHORT_CHUNK_INTERLEAVED_IDENTIFIER = ['abcde', 'fghij', 'klmno', 'pqrst', 'uvwxy'].join('a'.repeat(7));
+const REPEATED_OPAQUE_IDENTIFIER = ['a3d5e7fg9h2j', 'a'.repeat(10), 'a3d5e7fg9h2j', 'a'.repeat(10), 'a3d5e7fg9h2j'].join('');
+const PAIRED_OPAQUE_IDENTIFIER = 'aabbccddeeffgghhiijjkkllmmnnooppqqrrsstt';
+const LOWERCASE_OPAQUE_IDENTIFIER = 'qwertyuiopasdfghjklz';
+const SINGLE_CHARACTER_INTERLEAVED_LOWERCASE_OPAQUE_IDENTIFIER = LOWERCASE_OPAQUE_IDENTIFIER
+  .split('').map(character => `${character}a`).join('');
+const SHORT_SEGMENTED_OPAQUE_IDENTIFIER = ['abcd', 'efgh', 'ijkl', 'mnop', 'qrst', 'uvwx', 'yz01'].join('-');
+const PRONOUNCEABLE_SEGMENTED_OPAQUE_IDENTIFIER = ['potib', 'kruhe', 'xafiz', 'uneba', 'jerex', 'itypu', 'povwf'].join('-');
+const VARIABLE_PRONOUNCEABLE_SEGMENTED_OPAQUE_IDENTIFIER =
+  'potib-kruhex-afizun-eba-jerexx-itypu-povwfa';
+const NEARLY_REPEATED_LOW_ENTROPY_INTERLEAVED_IDENTIFIER = 'qweraabbcty1uaabbcioplaabbcsdfgaabbchjkl';
+const TWO_PADDING_ONE_OPAQUE_INTERLEAVED_IDENTIFIER = ['qwertyu', 'a'.repeat(5), 'iop1asd', 'a'.repeat(5), 'fghjklz'].join('');
+const HYPHEN_SPLIT_LOWERCASE_OPAQUE_IDENTIFIER = 'kzqvmp-jdthra-xlyfecwb';
+const THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER = ['c3d5', 'e7f9', 'g2h4', 'j6k8', 'l0m1', 'n3p5', 'q7r9', 's2t4'].join('aaa');
+const DENSE_THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER = [
+  'a3', 'd5', 'e7', 'fg', '9h', '2j', '4k', 'm6', 'n8', 'p0', 'qr', '2s', '4t', '6u'
+].join('aba');
+const DENSE_FOUR_CHARACTER_PADDING_OPAQUE_IDENTIFIER = 'a3d5e7fg9h2j4km6n8p0qr2s4t6u'.split('').join('abca');
+const DISTINCT_DENSE_THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER = (() => {
+  const core = 'a3d5e7fg9h2j4km6n8p0';
+  const padding = [];
+  for (const first of ['a', 'b', 'c']) {
+    for (const second of ['a', 'b', 'c']) {
+      for (const third of ['a', 'b', 'c']) padding.push(`${first}${second}${third}`);
+    }
+  }
+  return core.split('').map((character, index) => `${character}${padding[index] ?? ''}`).join('');
+})();
+const FOUR_CHARACTER_PADDING_OPAQUE_IDENTIFIER = 'c3d5aaabe7f9aaabg2h4aaabj6k8aaabl0m1aaabn3p5aaabq7r9aaabs2t4';
+const TWO_SINGLETON_PADDING_OPAQUE_IDENTIFIER = 'qweraaabcty1uaaabcioplaaabcsdfgaaabchjkl';
+const DISTINCT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER = 'a3d5e7fcacccabbcabcg9h2j4kbaaabccacbcam6n8p0qaccbccbbbacbr2s4t6u';
+const DISTINCT_SHORT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER = '3at83u9aabbacb83u50nicacaacaba54zilcnabbbcccaayx8bupk';
+const DISTINCT_ADJACENT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER = 'cra98z2cbba5cr29cfcbacaaccaababi9k7udscccacbbbacaccvat0r6x';
+const OPAQUE_IDENTIFIER_CORE = 'a3d5e7fg9h2j4km6n8p0';
+const LONG_PERIODIC_PADDING_OPAQUE_IDENTIFIER = OPAQUE_IDENTIFIER_CORE.match(/.{1,3}/gu).join('aabbaabbaa');
+const EIGHT_CHARACTER_PADDING_OPAQUE_IDENTIFIER = OPAQUE_IDENTIFIER_CORE.match(/.{1,3}/gu).join('abcdabcd');
+const LONG_PERIODIC_PADDING_PROJECT_IDENTIFIER = `group/${OPAQUE_IDENTIFIER_CORE.match(/.{1,2}/gu).join('000000010')}`;
+const DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER = OPAQUE_IDENTIFIER_CORE
+  .split('').map(character => `x${character.charCodeAt(0).toString().padStart(3, '0')}`).join('');
+const FULLWIDTH_OPAQUE_PROJECT_IDENTIFIER = `fixture/${OPAQUE_IDENTIFIER_CORE.replace(/[a-z0-9]/gu, (character) =>
+  String.fromCodePoint(character >= '0' && character <= '9'
+    ? 0xff10 + Number(character)
+    : 0xff41 + character.charCodeAt(0) - 'a'.charCodeAt(0)))}`;
+const SEMANTIC_LOOKING_OPAQUE_IDENTIFIER = 'ther-inat-onre-comel-iquve';
+const NESTED_READABLE_PROJECT_ID = 'platform/service/authorization-configuration-observability';
 
 function sha256(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');
@@ -402,7 +455,195 @@ test('blocks low-entropy padded high-entropy project and logical IDs before subm
   assert.equal(logicalResult.status, 'submission_safety_blocked');
   assert.equal(logicalResult.errors?.[0]?.code, 'high_entropy_credential');
   assert.equal(JSON.stringify(logicalResult).includes(unsafeLogicalId), false);
+
+  const interleavedProjectId = `fixture/${INTERLEAVED_OPAQUE_IDENTIFIER}`;
+  const interleavedConfig = projectConfig();
+  interleavedConfig.project_id = interleavedProjectId;
+  const interleavedProject = backend({ config: interleavedConfig, projectId: interleavedProjectId, submitter });
+  const interleavedProjectResult = await interleavedProject.backend.create({
+    document_type: 'plan', logical_id: 'safe-plan', base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+  assert.equal(interleavedProjectResult.status, 'submission_safety_blocked');
+  assert.equal(interleavedProjectResult.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(interleavedProjectResult.project_id, null);
+  assert.equal(JSON.stringify(interleavedProjectResult).includes(interleavedProjectId), false);
+
+  const interleavedLogicalFixture = backend({ submitter });
+  const interleavedLogicalResult = await interleavedLogicalFixture.backend.create({
+    document_type: 'plan', logical_id: INTERLEAVED_OPAQUE_IDENTIFIER, base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+  assert.equal(interleavedLogicalResult.status, 'submission_safety_blocked');
+  assert.equal(interleavedLogicalResult.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(JSON.stringify(interleavedLogicalResult).includes(INTERLEAVED_OPAQUE_IDENTIFIER), false);
+
+  for (const identifier of [
+    SHORT_INTERLEAVED_OPAQUE_IDENTIFIER,
+    REPEATED_NON_PERIODIC_INTERLEAVED_OPAQUE_IDENTIFIER,
+    SHORTER_INTERLEAVED_OPAQUE_IDENTIFIER,
+    VARIED_TERNARY_INTERLEAVED_OPAQUE_IDENTIFIER,
+    LOW_ENTROPY_SHORT_CHUNK_INTERLEAVED_IDENTIFIER,
+    REPEATED_OPAQUE_IDENTIFIER,
+    PAIRED_OPAQUE_IDENTIFIER,
+    LOWERCASE_OPAQUE_IDENTIFIER,
+    SINGLE_CHARACTER_INTERLEAVED_LOWERCASE_OPAQUE_IDENTIFIER,
+    SHORT_SEGMENTED_OPAQUE_IDENTIFIER,
+    PRONOUNCEABLE_SEGMENTED_OPAQUE_IDENTIFIER,
+    VARIABLE_PRONOUNCEABLE_SEGMENTED_OPAQUE_IDENTIFIER,
+    NEARLY_REPEATED_LOW_ENTROPY_INTERLEAVED_IDENTIFIER,
+    TWO_PADDING_ONE_OPAQUE_INTERLEAVED_IDENTIFIER,
+    HYPHEN_SPLIT_LOWERCASE_OPAQUE_IDENTIFIER,
+    THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER,
+    DENSE_THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER,
+    DISTINCT_DENSE_THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER,
+    FOUR_CHARACTER_PADDING_OPAQUE_IDENTIFIER,
+    TWO_SINGLETON_PADDING_OPAQUE_IDENTIFIER,
+    DISTINCT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER,
+    DISTINCT_SHORT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER,
+    DISTINCT_ADJACENT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER,
+    LONG_PERIODIC_PADDING_OPAQUE_IDENTIFIER,
+    EIGHT_CHARACTER_PADDING_OPAQUE_IDENTIFIER,
+    DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER,
+    SEMANTIC_LOOKING_OPAQUE_IDENTIFIER
+  ]) {
+    const paddedProjectId = `fixture/${identifier}`;
+    const paddedConfig = projectConfig();
+    paddedConfig.project_id = paddedProjectId;
+    const paddedProject = backend({ config: paddedConfig, projectId: paddedProjectId, submitter });
+    const paddedProjectResult = await paddedProject.backend.create({
+      document_type: 'plan', logical_id: 'safe-plan', base_revision: 0,
+      content_kind: 'document', content: safeDocument()
+    });
+    assert.equal(paddedProjectResult.status, 'submission_safety_blocked', identifier);
+    assert.equal(paddedProjectResult.errors?.[0]?.code, 'high_entropy_credential', identifier);
+    assert.equal(paddedProjectResult.project_id, null, identifier);
+
+    const paddedLogical = backend({ submitter });
+    const paddedLogicalResult = await paddedLogical.backend.create({
+      document_type: 'plan', logical_id: identifier, base_revision: 0,
+      content_kind: 'document', content: safeDocument()
+    });
+    assert.equal(paddedLogicalResult.status, 'submission_safety_blocked', identifier);
+    assert.equal(paddedLogicalResult.errors?.[0]?.code, 'high_entropy_credential', identifier);
+    assert.equal(JSON.stringify(paddedLogicalResult).includes(identifier), false, identifier);
+  }
+
+  const denseFourCharacterConfig = projectConfig();
+  const denseFourCharacterProjectId = `fixture/${DENSE_FOUR_CHARACTER_PADDING_OPAQUE_IDENTIFIER}`;
+  denseFourCharacterConfig.project_id = denseFourCharacterProjectId;
+  const denseFourCharacterFixture = backend({
+    config: denseFourCharacterConfig,
+    projectId: denseFourCharacterProjectId,
+    submitter
+  });
+  const denseFourCharacterResult = await denseFourCharacterFixture.backend.create({
+    document_type: 'plan', logical_id: 'safe-plan', base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+  assert.equal(denseFourCharacterResult.status, 'submission_safety_blocked');
+  assert.equal(denseFourCharacterResult.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(denseFourCharacterResult.project_id, null);
+  assert.equal(JSON.stringify(denseFourCharacterResult).includes(denseFourCharacterProjectId), false);
+
+  const longPeriodicConfig = projectConfig();
+  longPeriodicConfig.project_id = LONG_PERIODIC_PADDING_PROJECT_IDENTIFIER;
+  const longPeriodicFixture = backend({
+    config: longPeriodicConfig,
+    projectId: LONG_PERIODIC_PADDING_PROJECT_IDENTIFIER,
+    submitter
+  });
+  const longPeriodicResult = await longPeriodicFixture.backend.create({
+    document_type: 'plan', logical_id: 'safe-plan', base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+  assert.equal(longPeriodicResult.status, 'submission_safety_blocked');
+  assert.equal(longPeriodicResult.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(longPeriodicResult.project_id, null);
+  assert.equal(JSON.stringify(longPeriodicResult).includes(LONG_PERIODIC_PADDING_PROJECT_IDENTIFIER), false);
+
+  const fullwidthConfig = projectConfig();
+  fullwidthConfig.project_id = FULLWIDTH_OPAQUE_PROJECT_IDENTIFIER;
+  const fullwidthFixture = backend({
+    config: fullwidthConfig,
+    projectId: FULLWIDTH_OPAQUE_PROJECT_IDENTIFIER,
+    submitter
+  });
+  const fullwidthResult = await fullwidthFixture.backend.create({
+    document_type: 'plan', logical_id: 'safe-plan', base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+  assert.equal(fullwidthResult.status, 'submission_safety_blocked');
+  assert.equal(fullwidthResult.errors?.[0]?.code, 'high_entropy_credential');
+  assert.equal(fullwidthResult.project_id, null);
+  assert.equal(JSON.stringify(fullwidthResult).includes(FULLWIDTH_OPAQUE_PROJECT_IDENTIFIER), false);
   assert.equal(submissions.length, 0);
+});
+
+test('allows readable semantic logical IDs without granting arbitrary hyphen or padding exemptions', async () => {
+  const submissions = [];
+  const fixture = backend({
+    submitter: {
+      async submit(input) {
+        submissions.push(input);
+        return { ok: true, filename: 'fixture.md' };
+      }
+    }
+  });
+
+  for (const logicalId of [
+    'company-project-wiki-external-docs',
+    'workflow-orchestration-observability-validation',
+    'document-runtime-security-validation',
+    'workflow-router-v2-document-runtime-integration',
+    'company-project-wiki-v2-external-docs',
+    'release-2026-08-company-project-wiki-docs',
+    'database-migration-backfill-safely',
+    'feature-flag-rollout-observations',
+    'skills-improvements-from-user-feedback',
+    'design-unified-document-system',
+    'doc-system-unification-summary',
+    'build-cache-clean-retry',
+    'alpha-bravo-delta-gamma-theta-omega',
+    'api-sdk-cli-http-json-yaml-grpc-oauth',
+    'tcp-udp-ipv4-ipv6-dns-tls-ssh-sftp',
+    'go-rust-java-node-python-ruby-swift-kotlin',
+    'transcription-synchronization-orchestration'
+  ]) {
+    const result = await fixture.backend.create({
+      document_type: 'plan', logical_id: logicalId, base_revision: 0,
+      content_kind: 'document', content: safeDocument()
+    });
+
+    assert.equal(result.status, 'submitted_pending_review', logicalId);
+  }
+  assert.equal(submissions.length, 17);
+});
+
+test('allows a normal nested GitLab project ID through the complete Wiki mutation path', async () => {
+  const nestedConfig = projectConfig();
+  nestedConfig.project_id = NESTED_READABLE_PROJECT_ID;
+  const submissions = [];
+  const fixture = backend({
+    config: nestedConfig,
+    pages: pagesFor(nestedConfig),
+    projectId: NESTED_READABLE_PROJECT_ID,
+    submitter: {
+      async submit(input) {
+        submissions.push(input);
+        return { ok: true, filename: 'fixture.md' };
+      }
+    }
+  });
+
+  const result = await fixture.backend.create({
+    document_type: 'plan', logical_id: 'company-project-wiki-external-docs', base_revision: 0,
+    content_kind: 'document', content: safeDocument()
+  });
+
+  assert.equal(result.status, 'submitted_pending_review');
+  assert.equal(result.project_id, NESTED_READABLE_PROJECT_ID);
+  assert.equal(submissions.length, 1);
 });
 
 test('rejects a high-entropy session reference before submitting any batch item', async () => {

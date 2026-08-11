@@ -18,7 +18,9 @@ function commandResult(stdout = '', options = {}) {
   return { code: 0, stdout, stderr: '', timed_out: false, truncated: false, ...options };
 }
 
-function fakeDependencies({ capabilities, commands = {}, readFiles = {}, delayMs = 0 } = {}) {
+function fakeDependencies(options = {}) {
+  const { capabilities, commands = {}, readFiles = {}, delayMs = 0, runtimeResult } = options;
+  const hasRuntimeResult = Object.hasOwn(options, 'runtimeResult');
   const calls = [];
   return {
     calls,
@@ -39,6 +41,7 @@ function fakeDependencies({ capabilities, commands = {}, readFiles = {}, delayMs
       if (typeof response === 'function') return response({ command, args, ...options });
       return response;
     },
+    resolveRuntime: async () => hasRuntimeResult ? runtimeResult : { status: 'ready', identity_status: 'external' },
     readFile: async (filePath) => {
       if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
       if (!(filePath in readFiles)) throw Object.assign(new Error('missing fixture'), { code: 'ENOENT' });
@@ -129,6 +132,31 @@ test('runs qmd query only after fewer than three unique search hits and retains 
   assert.equal(fullDependencies.calls.filter((call) => call.command === 'qmd').length, 1);
 });
 
+test('does not invoke qmd or a local Wiki fallback unless the runtime itself identifies an external project', async () => {
+  for (const runtimeResult of [
+    { status: 'wiki_unavailable', identity_status: 'company' },
+    { status: 'ambiguous_company_remote', identity_status: 'ambiguous_company_remote' },
+    { status: 'unregistered_no_remote', identity_status: 'none' },
+    null
+  ]) {
+    const dependencies = fakeDependencies({
+      capabilities: { qmd: true, git: true },
+      runtimeResult,
+      commands: {
+        qmd: commandResult('qmd://my-code-wiki/projects/other.md: unrelated\n'),
+        git: commandResult('abc\t1\tcommit\n')
+      }
+    });
+
+    const result = await collectContext(context({ wiki_root: '/wiki' }), dependencies);
+
+    assert.equal(result.branches.wiki.status, 'skipped', JSON.stringify(runtimeResult));
+    assert.equal(result.branches.wiki.error_code, 'DOCUMENT_RUNTIME_REQUIRED', JSON.stringify(runtimeResult));
+    assert.equal(dependencies.calls.some((call) => call.command === 'qmd'), false, JSON.stringify(runtimeResult));
+    assert.equal(dependencies.calls.some((call) => call.command === 'grep' && call.cwd === '/wiki'), false, JSON.stringify(runtimeResult));
+  }
+});
+
 test('keeps other branches when one command branch fails', async () => {
   const dependencies = fakeDependencies({
     capabilities: { rg: true, git: true },
@@ -188,8 +216,24 @@ test('returns bounded timeout output when the overall deadline expires', async (
   assert.ok(result.total_duration_ms < 200);
 });
 
+test('includes runtime resolution in the overall timeout boundary', async () => {
+  const dependencies = fakeDependencies({ capabilities: { rg: true } });
+  dependencies.resolveRuntime = async () => new Promise(() => {});
+  const started = performance.now();
+  const result = await collectContext(context(), { ...dependencies, overallTimeoutMs: 20 });
+  const elapsed = performance.now() - started;
+
+  assert.ok(elapsed < 200, `expected runtime resolve deadline, received ${elapsed.toFixed(1)}ms`);
+  assert.equal(result.truncated, true);
+  assert.equal(result.branches.wiki.status, 'skipped');
+  assert.equal(result.branches.wiki.error_code, 'DOCUMENT_RUNTIME_REQUIRED');
+  assert.equal(result.branches.repository.status, 'timeout');
+  assert.equal(dependencies.calls.length, 0);
+});
+
 test('rejects invalid collector envelopes before starting commands', () => {
   assert.throws(() => validateContextInput(context({ cwd: 'relative/path' })), /absolute/i);
   assert.throws(() => validateContextInput(context({ query: 'x'.repeat(4097) })), /4 KiB/i);
+  assert.throws(() => validateContextInput({ ...context(), wiki_mode: 'global-search' }), /fields/i);
   assert.throws(() => validateContextInput(context({ known_entry_files: ['/outside/readme.md'] })), /inside cwd/i);
 });

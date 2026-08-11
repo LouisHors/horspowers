@@ -294,6 +294,72 @@ test('Wiki contexts construct only the Wiki backend and keep unavailable context
   assert.equal(localConstructed, 0);
 });
 
+test('permits only a Wiki config-change when externally stored documentation is disabled', async () => {
+  let constructed = 0;
+  const executions = [];
+  const runtime = new DocumentRuntime({
+    resolveProjectContext: async () => ({
+      status: 'ready',
+      project: { root: '/retained-fixture/company-project', project_id: 'fixture/company-runtime' },
+      config: {
+        source: 'wiki',
+        value: {
+          project_id: 'fixture/company-runtime',
+          documentation: { enabled: false, backend: 'wiki', collection: 'my-code-wiki' }
+        }
+      },
+      config_status: 'valid',
+      documentation: { enabled: false, backend: 'disabled', auto_submit: false },
+      wiki: {
+        config_uri: 'qmd://my-code-wiki/projects/company/horspowers-config.md',
+        host_config: {
+          wiki: {
+            inbox: {
+              command: '/retained-fixture/wiki-inbox-submit',
+              timeout_ms: 1_000,
+              max_payload_bytes: 256 * 1024
+            }
+          }
+        },
+        qmd_client: {}
+      }
+    }),
+    InboxSubmitter: class {},
+    WikiDocsBackend: class {
+      constructor(options) {
+        constructed += 1;
+        assert.equal(options.config.documentation.enabled, false);
+      }
+
+      async execute(action, request, options) {
+        executions.push({ action, request, confirmed: options.confirmed });
+        return { status: 'submitted_pending_review', backend: 'wiki' };
+      }
+    }
+  });
+
+  const blockedCreate = await runtime.execute({
+    cwd: '/retained-fixture/company-project', action: 'create', request: {}
+  });
+  const configChange = await runtime.execute({
+    cwd: '/retained-fixture/company-project',
+    action: 'config-change',
+    request: { logical_id: 'horspowers-config' },
+    confirmed: true
+  });
+
+  assert.equal(blockedCreate.status, 'documentation_disabled');
+  assert.equal(constructed, 1);
+  assert.deepEqual(executions, [{
+    action: 'config-change',
+    request: { logical_id: 'horspowers-config' },
+    confirmed: true
+  }]);
+  assert.equal(configChange.status, 'submitted_pending_review');
+  assert.equal(configChange.backend, 'wiki');
+  assert.equal(configChange.project_id, 'fixture/company-runtime');
+});
+
 test('preserves an explicitly redacted Wiki project ID from a backend failure', async () => {
   const token = 'aB3dE5fG7hJ9kLmNpQrStUvWxYz01234';
   const unsafeProjectId = `fixture/${token}`;

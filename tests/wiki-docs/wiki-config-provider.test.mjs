@@ -267,3 +267,46 @@ test('fails closed without local fallback for unavailable, unregistered, invalid
   assert.equal(incompatible.status, 'project_config_incompatible');
   assert.deepEqual(incompatibleQmd.calls, [REGISTRY_URI, CONFIG_URI, MANIFEST_URI]);
 });
+
+test('preserves sanitized machine-block field errors from Registry, config, and manifest pages', async () => {
+  const configPage = page('horspowers-config', projectConfig());
+  const validRegistry = page('horspowers-registry', registry());
+  const validManifest = page('horspowers-manifest', manifest(configPage));
+  const cases = [
+    {
+      name: 'Registry',
+      pages: new Map([[REGISTRY_URI, '# missing Registry block\n']]),
+      status: 'registry_invalid'
+    },
+    {
+      name: 'config',
+      pages: new Map([
+        [REGISTRY_URI, validRegistry],
+        [CONFIG_URI, '# missing config block\n']
+      ]),
+      status: 'project_config_invalid'
+    },
+    {
+      name: 'manifest',
+      pages: new Map([
+        [REGISTRY_URI, validRegistry],
+        [CONFIG_URI, configPage],
+        [MANIFEST_URI, '# missing manifest block\n']
+      ]),
+      status: 'project_config_invalid'
+    }
+  ];
+
+  for (const { name, pages, status } of cases) {
+    const { client } = fakeQmd(pages);
+    const result = await resolveWikiProjectConfig({
+      identity: identity(),
+      hostConfig: hostConfig(),
+      qmdClient: client
+    });
+
+    assert.equal(result.status, status, name);
+    assert.equal(result.error_code, 'machine_block_missing', name);
+    assert.deepEqual(result.errors, [{ path: '$', code: 'marker_missing' }], name);
+  }
+});

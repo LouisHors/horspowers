@@ -12,6 +12,59 @@ import {
 
 const LOW_ENTROPY_IDENTIFIER_PADDING = 'a'.repeat(40);
 const OPAQUE_IDENTIFIER_SEGMENTS = ['abcdefghij', 'klmnopqrst', 'uvwxyz012345'];
+const INTERLEAVED_OPAQUE_IDENTIFIER = ['a3d5e7f', 'g9h2j4k', 'm6n8p0q', 'r2s4t6u'].join('a'.repeat(12));
+const SHORT_INTERLEAVED_OPAQUE_IDENTIFIER = ['a3d5e7f', 'g9h2j4k', 'm6n8p0q', 'r2s4t6u'].join('a'.repeat(7));
+const REPEATED_NON_PERIODIC_INTERLEAVED_OPAQUE_IDENTIFIER =
+  ['a3d5e7f', 'g9h2j4k', 'm6n8p0q', 'r2s4t6u'].join('000000010');
+const SHORTER_INTERLEAVED_OPAQUE_IDENTIFIER = ['a3d5e7', 'g9h2j4', 'm6n8p0', 'r2s4t6'].join('a'.repeat(5));
+const VARIED_TERNARY_INTERLEAVED_OPAQUE_IDENTIFIER = [
+  'a3d5e7f', 'aaabacaaabcb', 'g9h2j4k', 'aacaabaaacbc', 'm6n8p0q', 'abaacaaaabcb', 'r2s4t6u'
+].join('');
+const LOW_ENTROPY_SHORT_CHUNK_INTERLEAVED_IDENTIFIER = ['abcde', 'fghij', 'klmno', 'pqrst', 'uvwxy'].join('a'.repeat(7));
+const REPEATED_OPAQUE_IDENTIFIER = ['a3d5e7fg9h2j', 'a'.repeat(10), 'a3d5e7fg9h2j', 'a'.repeat(10), 'a3d5e7fg9h2j'].join('');
+const PAIRED_OPAQUE_IDENTIFIER = 'aabbccddeeffgghhiijjkkllmmnnooppqqrrsstt';
+const LOWERCASE_OPAQUE_IDENTIFIER = 'qwertyuiopasdfghjklz';
+const SINGLE_CHARACTER_INTERLEAVED_LOWERCASE_OPAQUE_IDENTIFIER = LOWERCASE_OPAQUE_IDENTIFIER
+  .split('').map(character => `${character}a`).join('');
+const SHORT_SEGMENTED_OPAQUE_IDENTIFIER = ['abcd', 'efgh', 'ijkl', 'mnop', 'qrst', 'uvwx', 'yz01'].join('-');
+const PRONOUNCEABLE_SEGMENTED_OPAQUE_IDENTIFIER = ['potib', 'kruhe', 'xafiz', 'uneba', 'jerex', 'itypu', 'povwf'].join('-');
+const VARIABLE_PRONOUNCEABLE_SEGMENTED_OPAQUE_IDENTIFIER =
+  'potib-kruhex-afizun-eba-jerexx-itypu-povwfa';
+const NEARLY_REPEATED_LOW_ENTROPY_INTERLEAVED_IDENTIFIER = 'qweraabbcty1uaabbcioplaabbcsdfgaabbchjkl';
+const TWO_PADDING_ONE_OPAQUE_INTERLEAVED_IDENTIFIER = ['qwertyu', 'a'.repeat(5), 'iop1asd', 'a'.repeat(5), 'fghjklz'].join('');
+const HYPHEN_SPLIT_LOWERCASE_OPAQUE_IDENTIFIER = 'kzqvmp-jdthra-xlyfecwb';
+const THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER = ['c3d5', 'e7f9', 'g2h4', 'j6k8', 'l0m1', 'n3p5', 'q7r9', 's2t4'].join('aaa');
+const DENSE_THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER = [
+  'a3', 'd5', 'e7', 'fg', '9h', '2j', '4k', 'm6', 'n8', 'p0', 'qr', '2s', '4t', '6u'
+].join('aba');
+const DENSE_FOUR_CHARACTER_PADDING_OPAQUE_IDENTIFIER = 'a3d5e7fg9h2j4km6n8p0qr2s4t6u'.split('').join('abca');
+const DISTINCT_DENSE_THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER = (() => {
+  const core = 'a3d5e7fg9h2j4km6n8p0';
+  const padding = [];
+  for (const first of ['a', 'b', 'c']) {
+    for (const second of ['a', 'b', 'c']) {
+      for (const third of ['a', 'b', 'c']) padding.push(`${first}${second}${third}`);
+    }
+  }
+  return core.split('').map((character, index) => `${character}${padding[index] ?? ''}`).join('');
+})();
+const FOUR_CHARACTER_PADDING_OPAQUE_IDENTIFIER = 'c3d5aaabe7f9aaabg2h4aaabj6k8aaabl0m1aaabn3p5aaabq7r9aaabs2t4';
+const TWO_SINGLETON_PADDING_OPAQUE_IDENTIFIER = 'qweraaabcty1uaaabcioplaaabcsdfgaaabchjkl';
+const DISTINCT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER = 'a3d5e7fcacccabbcabcg9h2j4kbaaabccacbcam6n8p0qaccbccbbbacbr2s4t6u';
+const DISTINCT_SHORT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER = '3at83u9aabbacb83u50nicacaacaba54zilcnabbbcccaayx8bupk';
+const DISTINCT_ADJACENT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER = 'cra98z2cbba5cr29cfcbacaaccaababi9k7udscccacbbbacaccvat0r6x';
+const OPAQUE_IDENTIFIER_CORE = 'a3d5e7fg9h2j4km6n8p0';
+const LONG_PERIODIC_PADDING_OPAQUE_IDENTIFIER = OPAQUE_IDENTIFIER_CORE.match(/.{1,3}/gu).join('aabbaabbaa');
+const EIGHT_CHARACTER_PADDING_OPAQUE_IDENTIFIER = OPAQUE_IDENTIFIER_CORE.match(/.{1,3}/gu).join('abcdabcd');
+const LONG_PERIODIC_PADDING_PROJECT_IDENTIFIER = `group/${OPAQUE_IDENTIFIER_CORE.match(/.{1,2}/gu).join('000000010')}`;
+const DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER = OPAQUE_IDENTIFIER_CORE
+  .split('').map(character => `x${character.charCodeAt(0).toString().padStart(3, '0')}`).join('');
+const FULLWIDTH_OPAQUE_PROJECT_IDENTIFIER = `fixture/${OPAQUE_IDENTIFIER_CORE.replace(/[a-z0-9]/gu, (character) =>
+  String.fromCodePoint(character >= '0' && character <= '9'
+    ? 0xff10 + Number(character)
+    : 0xff41 + character.charCodeAt(0) - 'a'.charCodeAt(0)))}`;
+const SEMANTIC_LOOKING_OPAQUE_IDENTIFIER = 'ther-inat-onre-comel-iquve';
+const NESTED_READABLE_PROJECT_ID = 'platform/service/authorization-configuration-observability';
 
 function metadata(operation = 'create') {
   return {
@@ -132,9 +185,35 @@ test('uses the same strict metadata envelope for every mutation operation and se
   semanticLogicalId.logical_id = 'external-docs-decision';
   assert.doesNotThrow(() => renderInboxSubmission({ metadata: semanticLogicalId, proposedDocument: '# Proposal\n' }));
 
+  for (const logicalId of [
+    'company-project-wiki-external-docs',
+    'workflow-orchestration-observability-validation',
+    'document-runtime-security-validation',
+    'workflow-router-v2-document-runtime-integration',
+    'company-project-wiki-v2-external-docs',
+    'release-2026-08-company-project-wiki-docs',
+    'database-migration-backfill-safely',
+    'feature-flag-rollout-observations',
+    'skills-improvements-from-user-feedback',
+    'design-unified-document-system',
+    'doc-system-unification-summary',
+    'build-cache-clean-retry',
+    'alpha-bravo-delta-gamma-theta-omega',
+    'api-sdk-cli-http-json-yaml-grpc-oauth',
+    'tcp-udp-ipv4-ipv6-dns-tls-ssh-sftp',
+    'go-rust-java-node-python-ruby-swift-kotlin',
+    'transcription-synchronization-orchestration'
+  ]) {
+    const readableLogicalId = metadata();
+    readableLogicalId.logical_id = logicalId;
+    assert.doesNotThrow(() => renderInboxSubmission({ metadata: readableLogicalId, proposedDocument: '# Proposal\n' }), logicalId);
+  }
+
   const readableProjectId = metadata();
-  readableProjectId.project_id = 'fixture/company-project';
-  assert.doesNotThrow(() => renderInboxSubmission({ metadata: readableProjectId, proposedDocument: '# Proposal\n' }));
+  for (const projectId of ['fixture/company-project', 'company/project-wiki-external-docs', NESTED_READABLE_PROJECT_ID]) {
+    readableProjectId.project_id = projectId;
+    assert.doesNotThrow(() => renderInboxSubmission({ metadata: readableProjectId, proposedDocument: '# Proposal\n' }), projectId);
+  }
 });
 
 test('rejects malformed submission metadata and payload framing before spawning a receiver', () => {
@@ -174,8 +253,138 @@ test('rejects malformed submission metadata and payload framing before spawning 
     ['low-entropy padded dot-split project ID', (value) => {
       value.project_id = `fixture/${LOW_ENTROPY_IDENTIFIER_PADDING}.${OPAQUE_IDENTIFIER_SEGMENTS.join('.')}`;
     }],
+    ['interleaved low-entropy padded project ID', (value) => { value.project_id = `fixture/${INTERLEAVED_OPAQUE_IDENTIFIER}`; }],
+    ['short interleaved low-entropy padded project ID', (value) => { value.project_id = `fixture/${SHORT_INTERLEAVED_OPAQUE_IDENTIFIER}`; }],
+    ['repeated non-periodic low-entropy padded project ID', (value) => {
+      value.project_id = `fixture/${REPEATED_NON_PERIODIC_INTERLEAVED_OPAQUE_IDENTIFIER}`;
+    }],
+    ['shorter interleaved low-entropy padded project ID', (value) => { value.project_id = `fixture/${SHORTER_INTERLEAVED_OPAQUE_IDENTIFIER}`; }],
+    ['varied ternary low-entropy padded project ID', (value) => {
+      value.project_id = `fixture/${VARIED_TERNARY_INTERLEAVED_OPAQUE_IDENTIFIER}`;
+    }],
+    ['low-entropy short-chunk padded project ID', (value) => {
+      value.project_id = `fixture/${LOW_ENTROPY_SHORT_CHUNK_INTERLEAVED_IDENTIFIER}`;
+    }],
+    ['repeated opaque project ID', (value) => { value.project_id = `fixture/${REPEATED_OPAQUE_IDENTIFIER}`; }],
+    ['paired opaque project ID', (value) => { value.project_id = `fixture/${PAIRED_OPAQUE_IDENTIFIER}`; }],
+    ['lowercase opaque project ID', (value) => { value.project_id = `fixture/${LOWERCASE_OPAQUE_IDENTIFIER}`; }],
+    ['single-character interleaved lowercase opaque project ID', (value) => {
+      value.project_id = `fixture/${SINGLE_CHARACTER_INTERLEAVED_LOWERCASE_OPAQUE_IDENTIFIER}`;
+    }],
+    ['short-segmented opaque project ID', (value) => {
+      value.project_id = `fixture/${SHORT_SEGMENTED_OPAQUE_IDENTIFIER}`;
+    }],
+    ['pronounceable segmented opaque project ID', (value) => {
+      value.project_id = `fixture/${PRONOUNCEABLE_SEGMENTED_OPAQUE_IDENTIFIER}`;
+    }],
+    ['variable pronounceable segmented opaque project ID', (value) => {
+      value.project_id = `fixture/${VARIABLE_PRONOUNCEABLE_SEGMENTED_OPAQUE_IDENTIFIER}`;
+    }],
+    ['nearly repeated low-entropy padded project ID', (value) => {
+      value.project_id = `fixture/${NEARLY_REPEATED_LOW_ENTROPY_INTERLEAVED_IDENTIFIER}`;
+    }],
+    ['two-padding one-opaque project ID', (value) => {
+      value.project_id = `fixture/${TWO_PADDING_ONE_OPAQUE_INTERLEAVED_IDENTIFIER}`;
+    }],
+    ['hyphen-split lowercase opaque project ID', (value) => {
+      value.project_id = `fixture/${HYPHEN_SPLIT_LOWERCASE_OPAQUE_IDENTIFIER}`;
+    }],
+    ['three-character padded opaque project ID', (value) => {
+      value.project_id = `fixture/${THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER}`;
+    }],
+    ['dense three-character padded opaque project ID', (value) => {
+      value.project_id = `fixture/${DENSE_THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER}`;
+    }],
+    ['dense four-character padded opaque project ID', (value) => {
+      value.project_id = `fixture/${DENSE_FOUR_CHARACTER_PADDING_OPAQUE_IDENTIFIER}`;
+    }],
+    ['distinct dense three-character padded opaque project ID', (value) => {
+      value.project_id = `fixture/${DISTINCT_DENSE_THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER}`;
+    }],
+    ['four-character padded opaque project ID', (value) => {
+      value.project_id = `fixture/${FOUR_CHARACTER_PADDING_OPAQUE_IDENTIFIER}`;
+    }],
+    ['two-singleton padded opaque project ID', (value) => {
+      value.project_id = `fixture/${TWO_SINGLETON_PADDING_OPAQUE_IDENTIFIER}`;
+    }],
+    ['distinct low-entropy padded project ID', (value) => {
+      value.project_id = `fixture/${DISTINCT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER}`;
+    }],
+    ['distinct short low-entropy padded project ID', (value) => {
+      value.project_id = `fixture/${DISTINCT_SHORT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER}`;
+    }],
+    ['distinct adjacent low-entropy padded project ID', (value) => {
+      value.project_id = `fixture/${DISTINCT_ADJACENT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER}`;
+    }],
+    ['long periodic padded project ID', (value) => { value.project_id = LONG_PERIODIC_PADDING_PROJECT_IDENTIFIER; }],
+    ['fullwidth opaque project ID', (value) => { value.project_id = FULLWIDTH_OPAQUE_PROJECT_IDENTIFIER; }],
+    ['semantic-looking opaque project ID', (value) => { value.project_id = `fixture/${SEMANTIC_LOOKING_OPAQUE_IDENTIFIER}`; }],
     ['high-entropy logical ID', (value) => { value.logical_id = 'abcdefghijklmnopqrstuvwxyz0123456789'; }],
-    ['hyphen-split high-entropy logical ID', (value) => { value.logical_id = 'abcdefghij-klmnopqrst-uvwxyz012345'; }]
+    ['hyphen-split high-entropy logical ID', (value) => { value.logical_id = 'abcdefghij-klmnopqrst-uvwxyz012345'; }],
+    ['interleaved low-entropy padded logical ID', (value) => { value.logical_id = INTERLEAVED_OPAQUE_IDENTIFIER; }],
+    ['short interleaved low-entropy padded logical ID', (value) => { value.logical_id = SHORT_INTERLEAVED_OPAQUE_IDENTIFIER; }],
+    ['repeated non-periodic low-entropy padded logical ID', (value) => {
+      value.logical_id = REPEATED_NON_PERIODIC_INTERLEAVED_OPAQUE_IDENTIFIER;
+    }],
+    ['shorter interleaved low-entropy padded logical ID', (value) => { value.logical_id = SHORTER_INTERLEAVED_OPAQUE_IDENTIFIER; }],
+    ['varied ternary low-entropy padded logical ID', (value) => {
+      value.logical_id = VARIED_TERNARY_INTERLEAVED_OPAQUE_IDENTIFIER;
+    }],
+    ['low-entropy short-chunk padded logical ID', (value) => {
+      value.logical_id = LOW_ENTROPY_SHORT_CHUNK_INTERLEAVED_IDENTIFIER;
+    }],
+    ['repeated opaque logical ID', (value) => { value.logical_id = REPEATED_OPAQUE_IDENTIFIER; }],
+    ['paired opaque logical ID', (value) => { value.logical_id = PAIRED_OPAQUE_IDENTIFIER; }],
+    ['lowercase opaque logical ID', (value) => { value.logical_id = LOWERCASE_OPAQUE_IDENTIFIER; }],
+    ['single-character interleaved lowercase opaque logical ID', (value) => {
+      value.logical_id = SINGLE_CHARACTER_INTERLEAVED_LOWERCASE_OPAQUE_IDENTIFIER;
+    }],
+    ['short-segmented opaque logical ID', (value) => {
+      value.logical_id = SHORT_SEGMENTED_OPAQUE_IDENTIFIER;
+    }],
+    ['pronounceable segmented opaque logical ID', (value) => {
+      value.logical_id = PRONOUNCEABLE_SEGMENTED_OPAQUE_IDENTIFIER;
+    }],
+    ['variable pronounceable segmented opaque logical ID', (value) => {
+      value.logical_id = VARIABLE_PRONOUNCEABLE_SEGMENTED_OPAQUE_IDENTIFIER;
+    }],
+    ['nearly repeated low-entropy padded logical ID', (value) => {
+      value.logical_id = NEARLY_REPEATED_LOW_ENTROPY_INTERLEAVED_IDENTIFIER;
+    }],
+    ['two-padding one-opaque logical ID', (value) => {
+      value.logical_id = TWO_PADDING_ONE_OPAQUE_INTERLEAVED_IDENTIFIER;
+    }],
+    ['hyphen-split lowercase opaque logical ID', (value) => {
+      value.logical_id = HYPHEN_SPLIT_LOWERCASE_OPAQUE_IDENTIFIER;
+    }],
+    ['three-character padded opaque logical ID', (value) => {
+      value.logical_id = THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER;
+    }],
+    ['dense three-character padded opaque logical ID', (value) => {
+      value.logical_id = DENSE_THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER;
+    }],
+    ['distinct dense three-character padded opaque logical ID', (value) => {
+      value.logical_id = DISTINCT_DENSE_THREE_CHARACTER_PADDING_OPAQUE_IDENTIFIER;
+    }],
+    ['four-character padded opaque logical ID', (value) => {
+      value.logical_id = FOUR_CHARACTER_PADDING_OPAQUE_IDENTIFIER;
+    }],
+    ['two-singleton padded opaque logical ID', (value) => {
+      value.logical_id = TWO_SINGLETON_PADDING_OPAQUE_IDENTIFIER;
+    }],
+    ['distinct low-entropy padded logical ID', (value) => {
+      value.logical_id = DISTINCT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER;
+    }],
+    ['distinct short low-entropy padded logical ID', (value) => {
+      value.logical_id = DISTINCT_SHORT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER;
+    }],
+    ['distinct adjacent low-entropy padded logical ID', (value) => {
+      value.logical_id = DISTINCT_ADJACENT_LOW_ENTROPY_PADDING_OPAQUE_IDENTIFIER;
+    }],
+    ['long periodic padded logical ID', (value) => { value.logical_id = LONG_PERIODIC_PADDING_OPAQUE_IDENTIFIER; }],
+    ['eight-character padded logical ID', (value) => { value.logical_id = EIGHT_CHARACTER_PADDING_OPAQUE_IDENTIFIER; }],
+    ['decimal character-code logical ID', (value) => { value.logical_id = DECIMAL_CHARACTER_CODE_OPAQUE_IDENTIFIER; }],
+    ['semantic-looking opaque logical ID', (value) => { value.logical_id = SEMANTIC_LOOKING_OPAQUE_IDENTIFIER; }]
   ]) {
     const unsafeMetadata = metadata();
     mutate(unsafeMetadata);

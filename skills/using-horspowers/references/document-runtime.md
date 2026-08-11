@@ -48,6 +48,8 @@ node "$HORSPOWERS_DOCUMENT_RUNTIME_CLI" < "$HORSPOWERS_DOCUMENT_REQUEST_FILE"
 
 先以 `resolve` 判定状态。若 `status` 为 `ready`，再调用下一动作；若返回 disabled、unavailable、未注册或身份歧义，绝不回退写项目目录。
 
+背景收集器必须内部调用统一运行时的 `resolve`；只有其自身确认 `identity_status === "external"` 时，才可运行全局 `qmd search/query` 或本地 Wiki grep。所有其他身份状态（包括 `company`、`ambiguous_company_remote`、`none` 及缺失或未知状态）一律禁止这些未限域检索，调用方不能用输入字段要求例外。只有 `ready` 后才能通过本 runtime 的 `search` / `get` 读取受已验证 collection、manifest 和 `root_uri` 限制的项目文档；其他状态只保留当前会话内容。
+
 ## 可安全投稿的文档内容
 
 local backend 可保留完整 Markdown、代码片段和既有模板。Wiki backend 的 `create` / `update` 必须使用 `content_kind: "document"` 及严格的 `safe-document`：

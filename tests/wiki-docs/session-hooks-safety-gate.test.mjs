@@ -18,12 +18,20 @@ function teamConfig() {
   return 'version: 4.5.0\ndevelopment_mode: team\nbranch_strategy: worktree\ntesting_strategy: tdd\ncompletion_strategy: pr\ndocumentation:\n  enabled: true\n';
 }
 
-async function retainedCompanyFixture(name) {
+async function retainedGitFixture(name, remotes = []) {
   const root = path.join(artifactsRoot, `${Date.now()}-${process.pid}-${fixtureSequence += 1}-${name}`);
   await mkdir(root, { recursive: true });
   await run('git', ['init', '--quiet'], { cwd: root });
-  await run('git', ['remote', 'add', 'origin', 'git@gitlab.ugnas.com:platform/ugcli-lib.git'], { cwd: root });
+  for (const [remoteName, remoteUrl] of remotes) {
+    await run('git', ['remote', 'add', remoteName, remoteUrl], { cwd: root });
+  }
   return root;
+}
+
+async function retainedCompanyFixture(name) {
+  return retainedGitFixture(name, [
+    ['origin', 'git@gitlab.ugnas.com:platform/ugcli-lib.git']
+  ]);
 }
 
 async function snapshotTree(root) {
@@ -115,6 +123,51 @@ test('SessionEnd does not mutate company project documentation when its Wiki run
   assert.match(context, /wiki-unavailable/u);
   assert.doesNotMatch(context, /external-document-runtime-not-ready/u);
   assert.match(context, /not persisted/);
+});
+
+test('Session hooks keep no-remote and ambiguous company fixtures byte-for-byte unchanged', async () => {
+  const fixtures = [
+    { name: 'no-remote', remotes: [], state: /unregistered/u },
+    {
+      name: 'ambiguous-company-remotes',
+      remotes: [
+        ['upstream', 'git@gitlab.ugnas.com:platform/one.git'],
+        ['backup', 'git@192.168.75.113:platform/two.git']
+      ],
+      state: /ambiguous/u
+    }
+  ];
+
+  for (const fixture of fixtures) {
+    const root = await retainedGitFixture(`session-hooks-${fixture.name}`, fixture.remotes);
+    const fakeHome = path.join(root, 'fake-home');
+    const taskDoc = path.join(root, 'docs/active/task.md');
+    const bugDoc = path.join(root, 'docs/active/bug.md');
+    await mkdir(path.dirname(taskDoc), { recursive: true });
+    await mkdir(fakeHome, { recursive: true });
+    await writeFile(path.join(root, '.horspowers-config.yaml'), teamConfig(), 'utf8');
+    await writeFile(taskDoc, '# Existing task\n', 'utf8');
+    await writeFile(bugDoc, '# Existing bug\n', 'utf8');
+
+    const before = await snapshotTree(root);
+    const start = await runHook('session-start.sh', { cwd: root, env: { HOME: fakeHome } });
+    const afterStart = await snapshotTree(root);
+    const end = await runHook('session-end.sh', {
+      cwd: root,
+      env: { HOME: fakeHome, TASK_DOC: taskDoc, BUG_DOC: bugDoc, CLAUDE_SESSION_ID: 'test-session' }
+    });
+    const afterEnd = await snapshotTree(root);
+
+    assert.equal(start.exitCode, 0, fixture.name);
+    assert.equal(start.stderr, '', fixture.name);
+    assert.deepEqual(afterStart, before, fixture.name);
+    assert.match(JSON.parse(start.stdout).hookSpecificOutput.additionalContext, fixture.state, fixture.name);
+    assert.equal(end.exitCode, 0, fixture.name);
+    assert.equal(end.stderr, '', fixture.name);
+    assert.deepEqual(afterEnd, before, fixture.name);
+    assert.match(JSON.parse(end.stdout).hookSpecificOutput.additionalContext, fixture.state, fixture.name);
+    assert.match(JSON.parse(end.stdout).hookSpecificOutput.additionalContext, /not persisted/u, fixture.name);
+  }
 });
 
 test('SessionStart retains local configuration behavior for an ordinary remote', async () => {

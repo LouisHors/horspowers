@@ -818,6 +818,39 @@ test('daily workflow skills route document operations through the shared runtime
   }
 });
 
+test('brainstorming resolves the runtime before collecting company Wiki context', async () => {
+  const skill = await readRelative('skills/brainstorming/SKILL.md');
+  const collector = await readRelative('skills/brainstorming/scripts/collect-context.mjs');
+  const runtimeReference = await readRelative('skills/using-horspowers/references/document-runtime.md');
+
+  assert.match(skill, /调用 `resolve`[\s\S]*collect-context\.mjs/u);
+  assert.match(skill, /内部调用统一运行时的 `resolve`[\s\S]*identity_status\s*===\s*["']external["']/u);
+  assert.match(skill, /ambiguous_company_remote[\s\S]*调用方不能用输入字段/u);
+  assert.match(runtimeReference, /内部调用统一运行时的 `resolve`[\s\S]*identity_status\s*===\s*["']external["']/u);
+  assert.match(runtimeReference, /ambiguous_company_remote[\s\S]*调用方不能用输入字段/u);
+  assert.match(skill, /runtime.*search.*get/u);
+  assert.match(collector, /DocumentRuntime\.resolve/u);
+  assert.match(collector, /runtimeResult\?\.identity_status !== 'external'/u);
+  assert.doesNotMatch(collector, /wiki_mode/u);
+});
+
+test('repository audit permits direct global qmd search only in the runtime-enforced context collector', async () => {
+  const allFiles = await walk(repoRoot);
+  const directQmdSearch = /\brunSearch\([^\n]*['"]qmd['"]\s*,\s*\[['"](?:search|query)['"]/u;
+  const matches = [];
+
+  for (const file of allFiles) {
+    const rel = relative(file);
+    if (!(rel.startsWith('skills/') || rel.startsWith('commands/') || rel.startsWith('hooks/') || rel.startsWith('lib/'))) continue;
+    const content = await readFile(file, 'utf8');
+    if (directQmdSearch.test(content)) matches.push(rel);
+  }
+
+  assert.deepEqual(matches, ['skills/brainstorming/scripts/collect-context.mjs']);
+  const collector = await readRelative('skills/brainstorming/scripts/collect-context.mjs');
+  assert.match(collector, /if \(runtimeResult\?\.identity_status !== 'external'\) \{[\s\S]*?DOCUMENT_RUNTIME_REQUIRED/u);
+});
+
 test('runtime reference documents JSON stdin contract, safe documents, and the runtime status catalog', async () => {
   const content = await readRelative('skills/using-horspowers/references/document-runtime.md');
   for (const action of ['resolve', 'get', 'search', 'create', 'update', 'archive', 'restore', 'config-change', 'record-session']) {

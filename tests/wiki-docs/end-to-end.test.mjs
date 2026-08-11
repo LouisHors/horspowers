@@ -690,6 +690,45 @@ test('the one auto-submit policy governs every mutation and transitions preserve
   assert.deepEqual(await snapshotTree(confirmed.root), beforeConfirmed);
 });
 
+test('a disabled Wiki document backend still permits the config-change needed to re-enable it', async () => {
+  const fixture = await makeWikiFixture({ name: 'disabled-wiki-config-change', autoSubmit: true });
+  fixture.config.documentation.enabled = false;
+  const disabledConfigPage = machinePage('horspowers-config', fixture.config, '# Fixture config');
+  fixture.pages.set(CONFIG_URI, disabledConfigPage);
+  fixture.manifest.documents['horspowers-config'] = {
+    ...fixture.manifest.documents['horspowers-config'],
+    content_sha256: sha256(disabledConfigPage)
+  };
+  publishManifest(fixture);
+  const before = await snapshotTree(fixture.root);
+
+  const disabledResolution = await fixture.freshRuntime().resolve(fixture.root);
+  assert.equal(disabledResolution.status, 'documentation_disabled');
+  const blockedCreate = await fixture.freshRuntime().execute({
+    cwd: fixture.root,
+    action: 'create',
+    request: fixture.createRequest('must-stay-disabled')
+  });
+  assert.equal(blockedCreate.status, 'documentation_disabled');
+
+  const request = fixture.configChangeRequest();
+  request.content.documentation.enabled = true;
+  const submitted = await fixture.freshRuntime().execute({
+    cwd: fixture.root,
+    action: 'config-change',
+    request
+  });
+
+  assert.equal(submitted.status, 'submitted_pending_review');
+  assert.equal(submissionMetadata(fixture.receiver.calls.at(-1).payload).operation, 'config-change');
+  assert.deepEqual(await snapshotTree(fixture.root), before);
+
+  fixture.admit(submitted.submission_id);
+  const restoredResolution = await fixture.freshRuntime().resolve(fixture.root);
+  assert.equal(restoredResolution.status, 'ready');
+  assert.equal(restoredResolution.backend, 'wiki');
+});
+
 function sessionRequest() {
   return {
     session: {

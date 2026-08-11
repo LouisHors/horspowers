@@ -23,18 +23,14 @@ description: "You MUST use this before any creative work - creating features, bu
 
 复杂请求先拆成可独立验证的子项目；每个子项目单独经历设计、计划和实施循环。
 
-## 背景上下文收集
-
-在第一个澄清问题前调用安装目录中的 `collect-context.mjs` 一次。无需为 qmd 单独询问：进入 brainstorming 已授权这项只读收集。输入必须经宿主结构化 JSON stdin 传入，不能把用户原文插进命令字符串；收集器并行读取受限 Wiki、仓库、Git 历史和入口文件，任何一个分支失败都不阻止其他只读分支。
-
-检索结果只是候选证据：明确区分**仓库事实**、**Wiki 历史**、用户确认事实和**Agent 推断**。若 Wiki 与仓库不一致，展示两者来源并请用户确认基线；同一主题复用已收集的结果，仅在新模块或证据缺口出现时增量收集。
-
-## 统一文档运行时
+## 统一文档运行时与背景上下文
 
 先阅读 `horspowers:using-horspowers/references/document-runtime.md` 并严格遵守其安装根解析、JSON stdin 和结果处理契约。不得根据项目中的配置标记或目录是否存在选择文档后端，也不得直接读写文档路径。
 
-1. 调用 `resolve`。非 `ready`、unavailable、未注册或身份歧义时，保留设计在当前会话并明确“未持久化”；绝不创建本地替代文档。
-2. 调用 `search` 查找相关 context、design 和 plan 候选；对选中的 logical ID 或本地运行时路径调用 `get` 读取完整正文。
+在第一个澄清问题前，先调用 `resolve`，再调用安装目录中的 `collect-context.mjs` 一次。输入必须经宿主结构化 JSON stdin 传入，不能把用户原文插进命令字符串；收集器只负责仓库、Git 历史和入口文件等非文档背景，任一分支失败都不阻止其他只读分支。
+
+1. 收集器会内部调用统一运行时的 `resolve`；只有其自身确认 `identity_status === "external"` 时，才可全局检索个人 Wiki 历史。项目工作流文档仍必须通过 runtime 的 `search` / `get` 读取。
+2. `company`、`ambiguous_company_remote`、`none` 及缺失或未知状态一律禁止直接 `qmd search/query` 和本地 Wiki grep；调用方不能用输入字段要求例外。只有 runtime 为 `ready` 时才由 runtime 的 `search` / `get` 获取受 manifest 与 root 范围约束的 context、design 和 plan 正文。非 `ready` 时保留设计在当前会话并明确“未持久化”，绝不创建本地替代文档。检索结果只是候选证据：明确区分**仓库事实**、**Wiki 历史**、用户确认事实和**Agent 推断**。若 Wiki 与仓库不一致，展示两者来源并请用户确认基线。
 3. 仅当设计含有重要架构、数据模型、接口或技术取舍时，询问用户是否创建设计文档；简单设计可只保留在会话并进入 `horspowers:writing-plans`。
 4. 获准后通过 `create` 创建 design。后续用户修订必须通过 `update`，再重新读取完整正文。
 
