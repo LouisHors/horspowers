@@ -1,11 +1,12 @@
 import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
-import { mkdir } from 'node:fs/promises';
+import { lstat, mkdir, readdir, readFile } from 'node:fs/promises';
 import { once } from 'node:events';
 import path from 'node:path';
 import { spawn } from 'node:child_process';
 import { execFile } from 'node:child_process';
+import { createHash } from 'node:crypto';
 import { promisify } from 'node:util';
 import { fileURLToPath } from 'node:url';
 
@@ -15,6 +16,7 @@ const shellMarker = '/private/tmp/horspowers-route-request-shell-marker';
 const artifactsRoot = path.join(repoRoot, 'tests/.artifacts/workflow-router');
 const run = promisify(execFile);
 let fixtureRoot;
+let companyFixtureRoot;
 let fakeHome;
 
 before(async () => {
@@ -22,9 +24,39 @@ before(async () => {
   fixtureRoot = path.join(artifactsRoot, runId, 'project');
   fakeHome = path.join(artifactsRoot, runId, 'home');
   await mkdir(fixtureRoot, { recursive: true });
+  companyFixtureRoot = path.join(artifactsRoot, runId, 'company-project');
+  await mkdir(companyFixtureRoot, { recursive: true });
   await mkdir(fakeHome, { recursive: true });
   await run('git', ['init', '--quiet'], { cwd: fixtureRoot });
+  await run('git', ['remote', 'add', 'origin', 'https://github.com/example/fixture.git'], { cwd: fixtureRoot });
+  await run('git', ['init', '--quiet'], { cwd: companyFixtureRoot });
+  await run('git', ['remote', 'add', 'origin', 'git@gitlab.ugnas.com:platform/ugcli-lib.git'], { cwd: companyFixtureRoot });
 });
+
+async function snapshotTree(root) {
+  const entries = [];
+
+  async function walk(current, relative = '') {
+    const details = await lstat(current);
+    if (details.isFile()) {
+      entries.push({
+        path: relative,
+        type: 'file',
+        sha256: createHash('sha256').update(await readFile(current)).digest('hex')
+      });
+      return;
+    }
+    entries.push({ path: relative, type: details.isDirectory() ? 'directory' : 'other' });
+    if (details.isDirectory()) {
+      for (const name of await readdir(current)) {
+        await walk(path.join(current, name), path.join(relative, name));
+      }
+    }
+  }
+
+  await walk(root);
+  return entries;
+}
 
 function validInput(overrides = {}) {
   return {
@@ -62,6 +94,35 @@ test('writes exactly one JSON object for a valid stdin envelope', async () => {
   assert.equal(result.stderr, '');
   assert.match(result.stdout, /^\{.*\}\n$/s);
   assert.equal(JSON.parse(result.stdout).routing.route, 'direct');
+});
+
+test('keeps a company Wiki-unavailable project mutation-free while restoring the migrated workflow target', async () => {
+  const before = await snapshotTree(companyFixtureRoot);
+  const result = await runCli({
+    input: JSON.stringify(validInput({
+      cwd: companyFixtureRoot,
+      message: '给这个功能写实施计划'
+    }))
+  });
+  const after = await snapshotTree(companyFixtureRoot);
+
+  assert.equal(result.exitCode, 0);
+  assert.equal(result.stderr, '');
+  assert.deepEqual(after, before);
+  const output = JSON.parse(result.stdout);
+  assert.equal(output.routing.route, 'planning');
+  assert.equal(output.routing.target_skill, 'horspowers:writing-plans');
+  assert.equal(output.routing.blocked_by, undefined);
+  assert.equal(output.project.eligibility, 'external_project');
+  assert.equal(output.project.identity_status, 'company');
+  assert.equal(
+    output.project.project_fingerprint,
+    `sha256:${createHash('sha256').update('ugnas-gitlab/platform/ugcli-lib').digest('hex')}`
+  );
+  assert.equal(output.project.config_source, 'none');
+  assert.equal(output.project.documentation_backend, 'disabled');
+  assert.equal(output.project.documentation_status, 'wiki_unavailable');
+  assert.equal(output.project.auto_submit, false);
 });
 
 test('does not execute shell syntax embedded in a user message', async () => {

@@ -1,6 +1,6 @@
 # Horspowers Release Notes
 
-## Unreleased (2026-08-05)
+## Unreleased (2026-08-10)
 
 ### New Features
 
@@ -8,6 +8,11 @@
 - `using-horspowers` 现在通过 stdin-only 本地路由器返回唯一高置信度 workflow、`direct` 或 `uncertain`，避免在明确请求上重复展开通用流程。
 - 路由器将安全项目资格检查、只读 Plan 与幂等 Apply 合并为一个入口；Codex 的 AGENTS 托管区块、团队配置和通用 docs 均不覆盖已有用户内容。
 - brainstorming 仅在需要探索时并行收集 Wiki、仓库、Git 和已知入口背景，并在 `rg` 或 qmd 缺失时有边界地回退。
+
+**公司项目 Wiki 外置配置与文档**
+- 已确认的公司 Git remote 现在按精确 host 和稳定 SHA-256 fingerprint 解析 Wiki Registry、项目配置和 manifest；域名/IP 的同一仓库得到同一身份，后缀伪装与身份歧义会 fail closed。
+- 公司项目的配置与已入库文档可从 Wiki 精确读取，所有 create、update、archive、restore、config-change 和会话记录统一走 Inbox-only 投稿与唯一 `documentation.submission.auto_submit` 开关。
+- Registry、配置、manifest、qmd、SSH 或 Inbox 不可用时，不创建项目内配置或 Horspowers `docs/`，也不会把待审核投稿误称为已入库。用户仍在本机审核、入库并运行 `qmd update`。
 
 ### Compatibility and Rollback
 

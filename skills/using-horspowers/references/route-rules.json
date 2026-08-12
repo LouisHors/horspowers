@@ -42,7 +42,7 @@
     },
     {
       "route": "tdd",
-      "explicit_patterns": ["horspowers:test-driven-development", "使用 test-driven-development", "使用 tdd", "用 tdd", "先用一个 failing case"],
+      "explicit_patterns": ["horspowers:test-driven-development", "使用 test-driven-development", "使用 tdd", "用 tdd", "先写失败测试", "先补一个复现测试", "先补一个能复现问题的测试", "把验收行为写成自动化测试", "先用一个 failing case", "先用一个 failing case 把问题固定住", "drive this from a failing test first"],
       "strong_groups": [
         { "id": "change_signal", "any_patterns": ["功能", "feature", "bugfix", "修复", "改成", "改代码", "实现", "fix", "bug"] },
         { "id": "test_first", "any_patterns": ["失败测试", "复现.*测试", "failing test", "failing case", "acceptance test first", "验收行为", "先写测试"] }

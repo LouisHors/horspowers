@@ -25,6 +25,6 @@ documentation:
 
 通用 docs 初始化只创建缺少的 `docs/`、`plans/`、`active/`、`archive/`、`context/`、`.docs-metadata/` 和不存在的 `index.json`。它不构造 `UnifiedDocsManager`，因此不会重写现有 index 或 Markdown。
 
-自动初始化只允许在 Git 项目根或带 `.horspowers-project-root` 的非 Git 项目根。文件系统根、用户根、系统临时目录、Wiki-native 项目、`.horspowers-no-auto-init` 项目和不可写目录一律跳过。
+自动初始化只允许在已确认普通（非公司、非歧义）remote 的 Git 项目根，或该 Git 根内由 `.horspowers-project-root` 标记指定的嵌套根。标记不能授权非 Git 路径自动初始化，搜索也不得越过已确认的 Git 根；这样可避免在公司项目或未知路径发生本地写入。文件系统根、用户根、系统临时目录、Wiki-native 项目、`.horspowers-no-auto-init` 项目和不可写目录一律跳过。
 
 当路由器返回 `explicit_action_required`、`failed` 或 `PLAN_FAILED` 时，不得把它说成初始化完成。

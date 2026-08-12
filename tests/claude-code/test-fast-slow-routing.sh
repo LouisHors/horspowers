@@ -10,6 +10,8 @@ PROJECT_ROOT="$RUN_ROOT/project"
 OUTPUT="$RUN_ROOT/session-start.json"
 
 mkdir -p "$FAKE_HOME" "$PROJECT_ROOT"
+git init --quiet "$PROJECT_ROOT"
+git -C "$PROJECT_ROOT" remote add origin https://github.com/example/horspowers-fixture.git
 
 (
   cd "$PROJECT_ROOT"

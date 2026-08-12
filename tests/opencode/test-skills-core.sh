@@ -304,7 +304,7 @@ function resolveSkillPath(skillName, superpowersDir, personalDir) {
         if (fs.existsSync(superpowersSkillFile)) {
             return {
                 skillFile: superpowersSkillFile,
-                sourceType: 'superpowers',
+                sourceType: 'horspowers',
                 skillPath: actualSkillName
             };
         }

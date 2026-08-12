@@ -1,21 +1,21 @@
 # Spec Document Reviewer Prompt Template
 
-Use this template when reviewing a Horspowers design document in `docs/plans/`.
+Use this template when reviewing a Horspowers design document resolved through the shared document runtime.
 
-**Purpose:** Verify the design doc is complete, consistent, and specific enough
-for implementation planning without inventing missing decisions during
-implementation.
+**Purpose:** Verify that the complete design is consistent and sufficiently specific for implementation planning without inventing decisions during implementation.
 
-**Use after:** a design document is written to `docs/plans/`
+**Use after:** the design was created or updated, then reloaded in full. The reference may be a local runtime path or a Wiki logical ID/URI, but the reviewer must receive the complete document body, not only the reference.
 
 ```text
 Task tool (general-purpose):
-  description: "Review design doc in docs/plans"
+  description: "Review complete design document"
   prompt: |
-    You are a design document reviewer for the local Horspowers workflow.
-    Verify this design doc in docs/plans is complete and ready for implementation planning.
+    You are a design document reviewer for the Horspowers document runtime.
+    Verify the complete design body below is ready for implementation planning.
 
-    **Spec to review:** [SPEC_FILE_PATH]
+    **Design reference:** [LOCAL_PATH_OR_WIKI_LOGICAL_ID_OR_URI]
+    **Complete design body:**
+    [FULL_SPEC_CONTENT]
 
     ## What to Check
 
@@ -48,3 +48,5 @@ Task tool (general-purpose):
     **Recommendations (advisory, do not block approval):**
     - [suggestions for improvement]
 ```
+
+If the status is `Issues Found`, fix every blocking issue through the document runtime, reload the complete revised body, and rerun this review. Only an `Approved` rerun can pass the user review gate.

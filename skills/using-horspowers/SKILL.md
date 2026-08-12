@@ -42,10 +42,11 @@ Claude Code 与 Windows PowerShell 示例见 `references/host-path-resolution.md
 
 解析 stdout 的唯一 JSON 对象后严格按 `routing` 处理：
 
-1. `target_skill` 非空：立即加载这个唯一 Skill，不再进行泛化 Skill 判断。
-2. `direct`：直接处理请求，不调用 qmd 或流程 Skill。
-3. `uncertain`：只在 `candidates` 中比较；仍无法消歧时只问一个关键问题。
-4. CLI non-zero：不假设配置或初始化已经成功，回退到 LLM 的安全路由判断且不执行额外写入。
+1. `blocked_by` 非空：不得加载候选 Skill；报告“外置文档运行时尚未就绪，Horspowers 工作流已安全暂停”，普通手工代码操作仍可继续。
+2. `target_skill` 非空：立即加载这个唯一 Skill，不再进行泛化 Skill 判断。
+3. `direct`：直接处理请求，不调用 qmd 或流程 Skill。
+4. `uncertain`：只在 `candidates` 中比较；仍无法消歧时只问一个关键问题。
+5. CLI non-zero：不假设配置或初始化已经成功，回退到 LLM 的安全路由判断且不执行额外写入。
 
 `mutations` 只报告 AGENTS 托管区块、项目配置和通用 docs 的状态。路由脚本在任何 Apply 前完成规则评分；Plan 失败或规则无效时返回 `uncertain` 且 `mutations` 为空。
 

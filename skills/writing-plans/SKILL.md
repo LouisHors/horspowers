@@ -1,250 +1,49 @@
 ---
 name: writing-plans
-description: "You MUST use this when the user wants an approved spec or agreed approach turned into a concrete step-by-step implementation plan before coding begins. Trigger on requests like '帮我写个实施计划'、'制定开发计划'、'把方案拆成执行步骤'. Do NOT use this when the approach is still unclear or the user is still choosing options; use brainstorming first. 中文触发场景：当用户说'帮我写个实施计划'、'怎么实现这个功能？'、'制定开发计划'、'需要详细规划一下'等需要编写实施计划时使用此技能。"
+description: You MUST use this when the user wants an approved spec or agreed approach turned into a concrete step-by-step implementation plan before coding begins. Trigger on requests like '帮我写个实施计划'、'制定开发计划'、'把这个方案拆成步骤'、'给我一份可执行的计划'。中文触发场景：当用户说“写计划”、“实施计划”、“拆解任务”、“把设计转成开发步骤”等需要编码前计划时使用此技能。
 ---
 
 # Writing Plans
 
-## Overview
+把已批准的设计转成可由陌生工程师逐步执行的计划。每个步骤必须有精确文件、行为、验证命令和 Expected，且不暗含关键设计决定。
 
-Write comprehensive implementation plans assuming the engineer has zero context for our codebase and questionable taste. Document everything they need to know: which files to touch for each task, code, testing, docs they might need to check, how to test it. Give them the whole plan as bite-sized tasks. DRY. YAGNI. TDD. Frequent commits.
+**开始时声明：**“我正在使用编写计划技能。” 首次回复先确认有无已批准的设计；没有时回到 `horspowers:brainstorming`，不开始编码。
 
-Assume they are a skilled developer, but know almost nothing about our toolset or problem domain. Assume they don't know good test design very well.
+## 统一文档运行时
 
-**Announce at start:** "我正在使用编写计划技能来创建实施计划..." (I'm using the writing-plans skill to create the implementation plan...)
+先阅读 `horspowers:using-horspowers/references/document-runtime.md`。只按该参考的 JSON stdin 使用 `resolve`、`search`、`get`、`create` 和 `update`，绝不以配置标记、目录或文件名决定文档 backend。
 
-**Context:** This should be run in a dedicated worktree (created by brainstorming skill).
+1. `resolve` 为 ready 后，以 `search` 找相关 design、decision、task 和旧 plan；对最终采用的 design 调 `get` 读取**完整正文**。
+2. 先用完整设计和仓库事实列出范围、非目标、风险、依赖和验收；不从标题或摘要推断要求。
+3. 用 `create` 产生 plan，需要动态追踪时再用 `create` 产生 task；修订统一用 `update`。运行时 unavailable 时把计划保留在会话，明确未持久化，绝不自行创建本地替代文档。
 
-**Save plans to:** `docs/plans/YYYY-MM-DD-<feature-name>.md`
+local backend 的 plan 保留完整 Markdown 模板，包含必要的代码片段、逐行实现说明和完整命令。Wiki backend 只能用 safe-document：
 
-## First Response Rule
+- 精确路径和操作进入 `files`。
+- 命令及 Expected 进入 `commands`。
+- symbol、输入、输出、规则、错误边界进入 `implementation_specs`。
+- `paragraphs` 只写简短原创解释；禁止放完整源码、diff、自由 Markdown 或日志。
 
-On the first response after routing into this skill:
+普通 local backend 的 plan 保持既有 `docs/plans/` 路径；Wiki backend 使用 logical ID/URI。两者都由运行时返回，不能据此反向选择 backend。
 
-- announce that you are using writing-plans
-- restate that the next move is to break the approved approach into implementation steps
-- ask at most one brief clarifying question only if the scope, dependencies, or success criteria are still ambiguous
+对 task 文档也使用相同边界，关联 design/plan 用 logical ID，而不是假设某个路径。`confirmation_required` 只询问一次；`safe_document_required` 或 `submission_safety_blocked` 时重构内容；`submitted_pending_review` 只能表述为“已投稿、待本机入库”；`partially_submitted` 必须分项报告。
 
-Do NOT create plan files, inspect the repository, gather requirements, or start structuring tasks before that first response is sent.
+## 计划格式
 
-## Quick Routing Boundaries
+每个任务按以下粒度写：
 
-Route here immediately when the approach is already accepted and the user asks to:
+1. 目标和前置条件。
+2. 要修改或新增的精确文件与 symbol。
+3. 行为、输入输出、失败路径和不可变规则。
+4. 测试优先的步骤、运行命令及 Expected。
+5. 明确不做的范围，避免投机性重构。
 
-- break the work into stages, steps, phases, or implementation order
-- hold off on coding for now and convert the chosen direction into an execution plan
-- structure work into reviewable batches before any implementation starts
-
-Do NOT drift to `brainstorming` just because the user says "先别做" or "先别动代码".
-If the direction is already approved and the user wants staged breakdown, this skill is still the correct route.
-
-## Bite-Sized Task Granularity
-
-**Each step is one action (2-5 minutes):**
-- "Write the failing test" - step
-- "Run it to make sure it fails" - step
-- "Implement the minimal code to make the test pass" - step
-- "Run the tests and make sure they pass" - step
-- "Commit" - step
-
-## Plan Document Header
-
-**Every plan MUST start with this header (中文模板):**
-
-```markdown
-# [功能名称] 实施计划
-
-> **Execution note:** After this plan is approved, use `horspowers:executing-plans` or `horspowers:subagent-driven-development` to implement it task-by-task in the current host.
-
-**日期**: YYYY-MM-DD
-
-## 目标
-
-[一句话描述这个计划要实现什么]
-
-## 架构方案
-
-[2-3 句话说明实现方法]
-
-## 技术栈
-
-[关键技术/库]
-
----
-```
-
-## Task Structure
-
-```markdown
-### Task N: [Component Name]
-
-**Files:**
-- Create: `exact/path/to/file.py`
-- Modify: `exact/path/to/existing.py:123-145`
-- Test: `tests/exact/path/to/test.py`
-
-**Step 1: Write the failing test**
-
-```python
-def test_specific_behavior():
-    result = function(input)
-    assert result == expected
-```
-
-**Step 2: Run test to verify it fails**
-
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: FAIL with "function not defined"
-
-**Step 3: Write minimal implementation**
-
-```python
-def function(input):
-    return expected
-```
-
-**Step 4: Run test to verify it passes**
-
-Run: `pytest tests/path/test.py::test_name -v`
-Expected: PASS
-
-**Step 5: Commit**
-
-```bash
-git add tests/path/test.py src/path/file.py
-git commit -m "feat: add specific feature"
-```
-```
-
-## Remember
-- Exact file paths always
-- Complete code in plan (not "add validation")
-- Exact commands with expected output
-- Reference relevant skills with @ syntax
-- DRY, YAGNI, TDD, frequent commits
-
-## Documentation Integration
-
-Before offering execution choice, check if documentation is enabled:
-
-IF `.horspowers-config.yaml` exists AND `documentation.enabled: true`:
-
-  **Step 1: Search related documents (输入文档上下文):**
-  Run: Search `docs/plans/` for related design documents
-  Purpose: 读取设计文档（如果存在），理解设计决策
-
-  **Step 2: Create plan document (静态参考):**
-  Save: `docs/plans/YYYY-MM-DD-<feature-name>.md`
-  Format: 使用 plan 模板（保持原有格式）
-
-  **Step 3: Create task tracking document (动态追踪):**
-  ```bash
-  # 创建任务文档并捕获路径
-  # 先将 HORSPOWERS_ROOT 解析为 Horspowers 安装根目录
-  TASK_DOC=$(node -e "
-  const DocsCore = require(process.env.HORSPOWERS_ROOT + '/lib/docs-core.js');
-  const manager = new DocsCore(process.cwd());
-
-  // 构建相关文档链接
-  const planFileName = '${date}-${featureSlug}.md';
-  let relatedDocs = { plan: planFileName };
-
-  // 如果存在 design 文档，添加到相关文档
-  // (需要在搜索步骤中找到 design 文档路径)
-
-  const result = manager.createActiveDocument('task', 'Implement: [feature-name]', null, relatedDocs);
-
-  console.log(result.path);
-  ")
-  echo "Created task document: $TASK_DOC"
-  export TASK_DOC
-  ```
-
-  **Step 4: Set active task for progress tracking:**
-  ```bash
-  # 设置活跃任务，供后续技能使用
-  # 先将 HORSPOWERS_ROOT 解析为 Horspowers 安装根目录
-  node -e "
-  const DocsCore = require(process.env.HORSPOWERS_ROOT + '/lib/docs-core.js');
-  const manager = new DocsCore(process.cwd());
-  manager.setActiveTask('$TASK_DOC', 'task');
-  "
-  ```
-
-  **In the created task document, ensure:**
-  - ## 任务描述: [来自计划的实施步骤概述]
-  - ## 相关文档:
-    - `- 计划文档: [../plans/YYYY-MM-DD-<feature>.md](../plans/YYYY-MM-DD-<feature>.md)`
-    - `- 设计文档: [../plans/YYYY-MM-DD-design-<topic>.md](../plans/YYYY-MM-DD-design-<topic>.md)` (如果存在)
-  - ## 实施计划: [拆解的具体任务列表，可引用计划中的步骤]
-  - ## 验收标准: [如何验证任务完成]
-  - ## 进展记录: [初始化为"待开始"]
-
-  **Step 5: Check core document count (复杂度控制):**
-  ```bash
-  # 检查核心文档数量
-  # 先将 HORSPOWERS_ROOT 解析为 Horspowers 安装根目录
-  node -e "
-  const DocsCore = require(process.env.HORSPOWERS_ROOT + '/lib/docs-core.js');
-  const manager = new DocsCore(process.cwd());
-  const count = manager.countCoreDocs('[feature-name]');
-  console.log('Core documents:', count.total);
-  if (count.warning) {
-    console.warn('WARNING:', count.warning);
-  }
-  "
-  ```
-
-  In Claude Code plugin environments, resolve the helper from `${CLAUDE_PLUGIN_ROOT}`. In Codex or other hosts, resolve the Horspowers installation root first, then import `lib/docs-core.js` from there. Do not assume the user's project contains this module.
-
-  IF core document count > 3:
-    WARN user: "当前核心文档数量为 ${count.total} 个，超过了建议的 3 个上限。建议检查是否所有文档都是必需的。"
-
-  Store the document path as `$TASK_DOC` for progress tracking throughout implementation.
+任务通常应在 2–5 分钟内形成一个可验证小步；先测试再实现，频繁验证并保留可回滚的 Git commit 边界。计划应列出建议的 commit 时机和精确变更范围，而不是把所有工作压成一个不可审查提交。
 
 ## Plan Review Gate
 
-After saving the plan document, review the full plan against the design/spec
-document before Execution Handoff.
+通过 `get` 取得**完整 plan 正文**和完整 design/spec 正文后，使用 `skills/writing-plans/plan-document-reviewer-prompt.md` 做结构化审查。子代理可用时把两个完整正文交给 reviewer；否则用同一 checklist 自审。
 
-**Review inputs:**
-- Plan document path: `docs/plans/YYYY-MM-DD-<feature-name>.md`
-- Design/spec path: the related design document found earlier in `docs/plans/`
+审查至少覆盖：未完成占位、design/spec 覆盖、每步是否有精确文件/命令/Expected、范围控制和 YAGNI。`Issues Found` 时先 `update` 修复，再重新 `get` 并审查；只有 `Approved` 才能交接执行。建议性意见不阻塞，但必须和 blocking issue 区分。
 
-**Review standard:** Use `./plan-document-reviewer-prompt.md`
-
-**What must be reviewed:**
-- Placeholders, `TODO`, `TBD`, "稍后定义", "实现时再定" and similar unresolved text
-- Coverage gaps between the design/spec and the plan tasks
-- Task steps that are not executable because they omit exact files, code, commands, or validation
-- Scope drift, over-engineering, or work that goes beyond the approved design/spec
-
-**How to run the review:**
-- If the host supports subagents, dispatch a reviewer using `./plan-document-reviewer-prompt.md`
-- Otherwise, do an equivalent local structured self-review using the same checklist and output format
-
-**Approval rule:**
-- If review status is `Issues Found`, fix the plan first and re-run the review
-- Only continue when the review status is `Approved`
-- Recommendations are advisory and do not block Execution Handoff
-
-## Execution Handoff
-
-After the plan review gate passes (and creating task doc if enabled), offer execution choice:
-
-**"计划已完成并保存到 `docs/plans/<filename>.md`。两种执行方式：**
-
-**1. 子代理驱动（当前会话）** - 我为每个任务分派新的子代理，任务间进行审查，快速迭代
-
-**2. 并行会话（独立）** - 在新会话中使用 executing-plans 批量执行，有检查点
-
-**选择哪种方式？"** (Which approach?)
-
-**If Subagent-Driven chosen:**
-- **REQUIRED SUB-SKILL:** Use horspowers:subagent-driven-development
-- Stay in this session
-- Fresh helper agent per task + code review
-
-**If Parallel Session chosen:**
-- Guide them to open new session in worktree
-- **REQUIRED SUB-SKILL:** New session uses horspowers:executing-plans
+通过后让用户选择 `horspowers:subagent-driven-development`（当前会话连续推进）或 `horspowers:executing-plans`（分批检查点）；不要在此技能中直接实施。

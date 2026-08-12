@@ -1,22 +1,25 @@
 # Plan Document Reviewer Prompt Template
 
-Use this template when reviewing a Horspowers implementation plan in `docs/plans/`.
+Use this template when reviewing a Horspowers implementation plan resolved through the shared document runtime.
 
-**Purpose:** Verify the full plan document is aligned with the approved
-design/spec and specific enough to execute without inventing missing decisions
-during implementation.
+**Purpose:** Verify the complete plan is aligned with the approved complete design/spec and specific enough to execute without inventing missing decisions.
 
-**Use after:** a plan document is written to `docs/plans/`
+**Use after:** the plan and its design/spec were reloaded in full. Each reference may be a local runtime path or a Wiki logical ID/URI, but the reviewer must receive both complete bodies.
 
 ```text
 Task tool (general-purpose):
-  description: "Review plan doc in docs/plans"
+  description: "Review complete plan against complete design"
   prompt: |
-    You are a plan document reviewer for the local Horspowers workflow.
-    Review the full implementation plan in docs/plans against its design/spec reference.
+    You are a plan document reviewer for the Horspowers document runtime.
+    Review the complete implementation plan against the complete design/spec body.
 
-    **Plan to review:** [PLAN_FILE_PATH]
-    **Design/spec reference:** [DESIGN_OR_SPEC_FILE_PATH]
+    **Plan reference:** [LOCAL_PATH_OR_WIKI_LOGICAL_ID_OR_URI]
+    **Complete plan body:**
+    [FULL_PLAN_CONTENT]
+
+    **Design/spec reference:** [LOCAL_PATH_OR_WIKI_LOGICAL_ID_OR_URI]
+    **Complete design/spec body:**
+    [FULL_DESIGN_OR_SPEC_CONTENT]
 
     ## What to Check
 
@@ -49,3 +52,5 @@ Task tool (general-purpose):
     **Recommendations (advisory, do not block approval):**
     - [suggestions for improvement]
 ```
+
+If the status is `Issues Found`, fix the blocking plan issues through the document runtime, reload both complete bodies, and rerun this review. Only an `Approved` rerun can pass Execution Handoff.
