@@ -8,9 +8,9 @@ Horspowers 对已确认的公司 Git 项目使用 Wiki 作为配置和已入库�
 
 ## 公司项目识别与项目指纹
 
-运行时只读获取 Git 的 `remote.<name>.url`。受信任主机是内置精确允许列表中的 `gitlab.ugnas.com` 与 `192.168.75.113`，两者都会归一为 `ugnas-gitlab`。支持常见的 scp-style、SSH 和 HTTPS clone URL。
+运行时只读获取 Git 的 `remote.<name>.url`。受信任主机是内置精确允许列表中的 `gitlab.ugnas.com` 与 `192.168.75.113`，两者都会归一为 `ugnas-gitlab`。支持常见的 scp-style、SSH 和 HTTPS clone URL。命中可信主机后，还必须确认项目根不在本机路径下：macOS/Windows 默认把当前用户目录视为本机项目根，Linux 跳板机默认不声明本机根。可用 `HORSPOWERS_LOCAL_PROJECT_ROOTS`（按系统路径分隔符分隔）显式覆盖；设置为空字符串可关闭默认值。可信 remote 与本机路径同时命中时按普通本地项目处理，不进入公司 Wiki 外置模式。
 
-匹配的是解析后的完整 host，而不是目录名、项目名、DNS、网页正文或字符串前缀。因此 `gitlab.ugnas.com.evil.example` 与 `192.168.75.113.example` 都不是公司项目。多个无法唯一选择的公司 remote 会得到 `ambiguous_company_remote`，不会选择配置或写入项目。
+匹配的是解析后的完整 host，而不是目录名、项目名、DNS、网页正文或字符串前缀。因此 `gitlab.ugnas.com.evil.example` 与 `192.168.75.113.example` 都不是公司项目。路径比较按真实目录边界进行，`/code/app` 不会把 `/code/app-copy` 当作本机项目。多个无法唯一选择的公司 remote 会得到 `ambiguous_company_remote`，不会选择配置或写入项目。
 
 同一仓库的 fingerprint 按以下规则计算：
 

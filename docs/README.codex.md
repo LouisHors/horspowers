@@ -66,7 +66,7 @@ content.
 
 ## 公司项目 Wiki 外置文档
 
-已确认的公司 Git 项目可从个人 Wiki 精确读取权威配置和已入库文档，并将所有文档变更投稿到 Inbox。它不会把公司项目的配置或 Horspowers `docs/` 写回仓库：Registry、qmd、SSH、manifest 或 Inbox 任一环节不可用时，文档持久化会安全停止而不会回退本地模式。
+已确认的公司 Git 项目可从个人 Wiki 精确读取权威配置和已入库文档，并将所有文档变更投稿到 Inbox。公司身份同时要求可信 Git remote 与非本机项目路径：macOS/Windows 用户目录内的副本继续使用本地模式，Linux 跳板机默认进入外置模式；`HORSPOWERS_LOCAL_PROJECT_ROOTS` 可覆盖本机根目录。它不会把公司项目的配置或 Horspowers `docs/` 写回仓库：Registry、qmd、SSH、manifest 或 Inbox 任一环节不可用时，文档持久化会安全停止而不会回退本地模式。
 
 宿主级 bootstrap 必须由用户人工安装；待审核投稿也不等于已入库。本机审核、Wiki 入库和 `qmd update` 仍由用户负责。机器块、唯一 `auto_submit` 开关、故障状态与只读 smoke 边界见 [公司项目 Wiki 外置配置与文档](wiki-external-documentation.md)。
 
