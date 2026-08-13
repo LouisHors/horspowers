@@ -72,7 +72,7 @@ function validInput(overrides = {}) {
 async function runCli({ input = '', args = [], env = {} } = {}) {
   const child = spawn(process.execPath, [scriptPath, ...args], {
     cwd: repoRoot,
-    env: { ...process.env, HOME: fakeHome, ...env },
+    env: { ...process.env, HOME: fakeHome, HORSPOWERS_LOCAL_PROJECT_ROOTS: '', ...env },
     shell: false,
     stdio: ['pipe', 'pipe', 'pipe']
   });

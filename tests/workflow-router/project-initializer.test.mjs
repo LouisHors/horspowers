@@ -153,7 +153,12 @@ test('does not let a marker initialize directories without a confirmed ordinary 
   for (const { root, expectedPlan, expectedResult } of cases) {
     await writeFile(path.join(root, '.horspowers-project-root'), '', 'utf8');
     const before = await snapshotTree(root);
-    const plan = await planProjectInitialization({ cwd: root, homeDir: homedir(), tempDir: tmpdir() });
+    const plan = await planProjectInitialization({
+      cwd: root,
+      homeDir: homedir(),
+      tempDir: tmpdir(),
+      localProjectRoots: []
+    });
     const result = await applyProjectInitialization(plan);
     const after = await snapshotTree(root);
 
@@ -274,7 +279,12 @@ test('requires external configuration without changing company project files', a
   await writeFile(path.join(existingConfigRoot, '.horspowers-config.yaml'), teamConfig(), 'utf8');
 
   for (const root of [missingConfigRoot, existingConfigRoot]) {
-    const plan = await planProjectInitialization({ cwd: root, homeDir: homedir(), tempDir: tmpdir() });
+    const plan = await planProjectInitialization({
+      cwd: root,
+      homeDir: homedir(),
+      tempDir: tmpdir(),
+      localProjectRoots: []
+    });
     assert.equal(plan.eligibility, 'external_project');
     assert.equal(plan.reason, 'company_external_config_required');
     assert.equal(plan.config_action, 'external_required');
@@ -299,7 +309,13 @@ test('detects company remotes before local Wiki and project-marker probes', asyn
   await writeFile(path.join(root, 'schema/wiki-native-automation.md'), '# Native\n', 'utf8');
   await writeFile(path.join(root, '.horspowers-project-root'), '', 'utf8');
 
-  const plan = await planProjectInitialization({ cwd: root, homeDir: homedir(), tempDir: tmpdir() });
+  const plan = await planProjectInitialization({
+    cwd: root,
+    homeDir: homedir(),
+    tempDir: tmpdir(),
+    localProjectRoots: [],
+    platform: 'linux'
+  });
 
   assert.equal(plan.eligibility, 'external_project');
   assert.equal(plan.reason, 'company_external_config_required');

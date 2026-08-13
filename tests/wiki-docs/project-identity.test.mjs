@@ -9,6 +9,7 @@ import { promisify } from 'node:util';
 import {
   classifyRepositoryRemotes,
   identifyGitProject,
+  isProjectPathOnLocalMachine,
   normalizeRemoteUrl
 } from '../../lib/project-identity.mjs';
 
@@ -29,6 +30,31 @@ test('normalizes domain, IP, SSH and HTTPS clones to one company repository', ()
 
   assert.equal(new Set(identities.map((item) => item.project_fingerprint)).size, 1);
   assert.equal(identities[0].canonical_repository, 'ugnas-gitlab/platform/ugcli-lib');
+});
+
+test('requires the company remote to be outside explicitly configured local project roots', () => {
+  const remote = [{ name: 'origin', url: 'git@gitlab.ugnas.com:platform/ugcli-lib.git' }];
+
+  assert.equal(
+    classifyRepositoryRemotes(remote, {
+      projectRoot: '/Users/ugreen/code/ugcli-lib',
+      localProjectRoots: ['/Users/ugreen/code']
+    }).kind,
+    'external'
+  );
+  assert.equal(
+    classifyRepositoryRemotes(remote, {
+      projectRoot: '/data/horsliu/code/ugcli-lib',
+      localProjectRoots: ['/Users/ugreen/code']
+    }).kind,
+    'company'
+  );
+});
+
+test('local project root matching is boundary-safe and rejects relative roots', () => {
+  assert.equal(isProjectPathOnLocalMachine('/Users/ugreen/code/ugcli-lib', ['/Users/ugreen/code']), true);
+  assert.equal(isProjectPathOnLocalMachine('/Users/ugreen/code-archive/ugcli-lib', ['/Users/ugreen/code']), false);
+  assert.equal(isProjectPathOnLocalMachine('/Users/ugreen/code/ugcli-lib', ['code']), false);
 });
 
 test('normalizes SCP-style query and fragment clones to the SSH and HTTPS fingerprint', () => {
@@ -138,6 +164,57 @@ test('reads configured remotes through execFile without a shell', async () => {
   assert.deepEqual(calls[0].args, ['-C', '/retained-fixture/company-project', 'config', '--local', '--get-regexp', '^remote\\..*\\.url$']);
   assert.equal(calls[0].file, 'git');
   assert.equal(calls[0].options.shell, false);
+});
+
+test('passes the configured local project roots into identity classification', async () => {
+  const identity = await identifyGitProject('/Users/ugreen/code/ugcli-lib', {
+    localProjectRoots: ['/Users/ugreen/code'],
+    execFile: async () => ({
+      stdout: 'remote.origin.url\tgit@gitlab.ugnas.com:platform/ugcli-lib.git\n'
+    })
+  });
+
+  assert.equal(identity.kind, 'external');
+  assert.equal(identity.reason, 'company_remote_local_project');
+});
+
+test('treats a trusted company remote under the desktop home as a local project by default', async () => {
+  const identity = await identifyGitProject('/Users/ugreen/code/ugcli-lib', {
+    platform: 'darwin',
+    homeDir: '/Users/ugreen',
+    environment: {},
+    execFile: async () => ({
+      stdout: 'remote.origin.url\tgit@gitlab.ugnas.com:platform/ugcli-lib.git\n'
+    })
+  });
+
+  assert.equal(identity.kind, 'external');
+});
+
+test('keeps the same trusted remote as a company project on the remote Linux host', async () => {
+  const identity = await identifyGitProject('/data/horsliu/code/ugcli-lib', {
+    platform: 'linux',
+    homeDir: '/data/horsliu',
+    environment: {},
+    execFile: async () => ({
+      stdout: 'remote.origin.url\tgit@gitlab.ugnas.com:platform/ugcli-lib.git\n'
+    })
+  });
+
+  assert.equal(identity.kind, 'company');
+});
+
+test('allows an explicit empty local-root setting to disable the desktop default', async () => {
+  const identity = await identifyGitProject('/Users/ugreen/code/ugcli-lib', {
+    platform: 'darwin',
+    homeDir: '/Users/ugreen',
+    environment: { HORSPOWERS_LOCAL_PROJECT_ROOTS: '' },
+    execFile: async () => ({
+      stdout: 'remote.origin.url\tgit@gitlab.ugnas.com:platform/ugcli-lib.git\n'
+    })
+  });
+
+  assert.equal(identity.kind, 'company');
 });
 
 test('reads local remote names containing dots from Git config output', async () => {
