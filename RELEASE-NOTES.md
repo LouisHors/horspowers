@@ -1,6 +1,6 @@
 # Horspowers Release Notes
 
-## Unreleased (2026-08-10)
+## v4.7.0 (2026-08-13)
 
 ### New Features
 

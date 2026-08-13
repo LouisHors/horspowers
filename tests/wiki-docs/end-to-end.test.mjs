@@ -420,6 +420,14 @@ async function makeWikiFixture({
   const dependencies = {
     defaultHostConfigPath: () => hostPath,
     readHostConfig,
+    // These fixtures model the Linux jump-host boundary. On macOS, the
+    // production default treats a checkout below the user's home directory
+    // as local; the fixture must explicitly keep that root remote so the
+    // Wiki backend contract is exercised.
+    identifyGitProject: async (projectRoot) => ({
+      ...classifyRepositoryRemotes(remotes, { projectRoot, localProjectRoots: [] }),
+      project_root: projectRoot
+    }),
     createQmdClient: () => qmd.client,
     readConfigAtRoot: () => {
       localConfigReads.count += 1;
@@ -909,7 +917,18 @@ test('company upgrades remain mutation-free while an ordinary Git project keeps 
   await writeFile(path.join(company.root, '.horspowers-version'), '4.1.0\n', 'utf8');
   await writeFile(path.join(company.root, 'document-driven-ai-workflow', 'legacy.md'), '# Legacy fixture\n', 'utf8');
   const companyBefore = await snapshotTree(company.root);
-  const companyUpgrade = new VersionUpgrader(company.root);
+  const companyUpgrade = new VersionUpgrader(company.root, {
+    // Keep the upgrade fixture on the simulated Linux jump-host boundary;
+    // desktop production defaults classify checkouts under the user's home
+    // as local projects.
+    identifyGitProject: async (projectRoot) => ({
+      ...classifyRepositoryRemotes(
+        [{ name: 'origin', url: 'git@gitlab.ugnas.com:platform/fixture-project.git' }],
+        { projectRoot, localProjectRoots: [] }
+      ),
+      project_root: projectRoot
+    })
+  });
   const companyResult = await companyUpgrade.run({ quiet: true, skipDDAW: true, skipDocs: true });
   assert.equal(companyResult.status, 'external_project_upgrade_disabled');
   assert.equal(companyResult.no_mutation, true);
