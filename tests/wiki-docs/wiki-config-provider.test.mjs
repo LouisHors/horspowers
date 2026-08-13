@@ -8,6 +8,7 @@ import {
   validateRegistry,
   validateWikiProjectConfig
 } from '../../lib/wiki-config-provider.mjs';
+import { markdownFromQmdResource } from '../../lib/wiki-qmd-content.mjs';
 
 const COLLECTION = 'my-code-wiki';
 const REGISTRY_URI = 'qmd://my-code-wiki/projects/horspowers-registry.md';
@@ -105,6 +106,10 @@ function manifest(configPage, overrides = {}) {
   return { ...value, ...overrides };
 }
 
+function qmdResourceText(text) {
+  return `<!-- Context: test -->\n\n${text.split('\n').map((line, index) => `${index + 1}: ${line}`).join('\n')}`;
+}
+
 function fakeQmd(pages, { contentType = 'text' } = {}) {
   const calls = [];
   return {
@@ -115,7 +120,7 @@ function fakeQmd(pages, { contentType = 'text' } = {}) {
         if (!pages.has(uri)) return { ok: false, error_code: 'qmd_get_not_found' };
         const text = pages.get(uri);
         const content = contentType === 'resource'
-          ? [{ type: 'resource', resource: { uri, mimeType: 'text/markdown', text } }]
+          ? [{ type: 'resource', resource: { uri, mimeType: 'text/markdown', text: qmdResourceText(text) } }]
           : [{ type: 'text', text }];
         return {
           ok: true,
@@ -250,6 +255,10 @@ test('resolves Registry, config, and manifest when qmd returns resource content 
 
   assert.equal(result.status, 'ready');
   assert.equal(result.config_revision, 1);
+});
+
+test('normalizes qmd resource presentation back to Markdown', () => {
+  assert.equal(markdownFromQmdResource(qmdResourceText('---\n# title\n')), '---\n# title\n');
 });
 
 test('fails closed without local fallback for unavailable, unregistered, invalid, and incompatible external configuration', async () => {

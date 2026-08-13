@@ -5,6 +5,10 @@ import test from 'node:test';
 import { WikiDocsBackend } from '../../lib/document-backends/wiki-docs-backend.mjs';
 import { validateAndSerializeSafeDocument } from '../../lib/submission-safety.mjs';
 
+function qmdResourceText(text) {
+  return `<!-- Context: test -->\n\n${text.split('\n').map((line, index) => `${index + 1}: ${line}`).join('\n')}`;
+}
+
 const COLLECTION = 'my-code-wiki';
 const ROOT_URI = `qmd://${COLLECTION}/projects/ugcli-lib`;
 const MANIFEST_URI = `${ROOT_URI}/index.md`;
@@ -159,7 +163,7 @@ function fakeQmd(pages, searchResults = [], { contentType = 'text' } = {}) {
         if (!pages.has(uri)) return { ok: false, error_code: 'qmd_get_not_found' };
         const text = pages.get(uri);
         const content = contentType === 'resource'
-          ? [{ type: 'resource', resource: { uri, mimeType: 'text/markdown', text } }]
+          ? [{ type: 'resource', resource: { uri, mimeType: 'text/markdown', text: qmdResourceText(text) } }]
           : [{ type: 'text', text }];
         return { ok: true, result: { content } };
       },
