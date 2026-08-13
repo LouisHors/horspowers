@@ -147,7 +147,7 @@ function pagesWithReferencedTask(config, logicalId, taskBody) {
   return pages;
 }
 
-function fakeQmd(pages, searchResults = []) {
+function fakeQmd(pages, searchResults = [], { contentType = 'text' } = {}) {
   const exactCalls = [];
   const searchCalls = [];
   return {
@@ -157,7 +157,11 @@ function fakeQmd(pages, searchResults = []) {
       async getExact(uri) {
         exactCalls.push(uri);
         if (!pages.has(uri)) return { ok: false, error_code: 'qmd_get_not_found' };
-        return { ok: true, result: { content: [{ type: 'text', text: pages.get(uri) }] } };
+        const text = pages.get(uri);
+        const content = contentType === 'resource'
+          ? [{ type: 'resource', resource: { uri, mimeType: 'text/markdown', text } }]
+          : [{ type: 'text', text }];
+        return { ok: true, result: { content } };
       },
       async search(args) {
         searchCalls.push(args);
@@ -215,11 +219,12 @@ function backend({
   serializeSafeDocument = async () => ({ ok: true, markdown: '# Safe document\n' }),
   dependencies: injectedDependencies = {},
   inspectSubmissionText,
-  inspectSubmissionMetadataIdentifier
+  inspectSubmissionMetadataIdentifier,
+  qmdContentType = 'text'
 } = {}) {
   const config = providedConfig ?? projectConfig({ autoSubmit });
   const pages = providedPages ?? pagesFor(config);
-  const qmd = fakeQmd(pages, searchResults);
+  const qmd = fakeQmd(pages, searchResults, { contentType: qmdContentType });
   const options = {
     projectRoot: '/retained-fixture/company-project',
     projectId,
@@ -253,6 +258,15 @@ test('gets a document only after an exact manifest read and verifies its content
   assert.equal(result.document.revision, 2);
   assert.match(result.document.content, /bounded runtime/u);
   assert.deepEqual(fixture.qmd.exactCalls, [MANIFEST_URI, CONFIG_URI, TASK_URI]);
+});
+
+test('gets a document when qmd returns resource content blocks', async () => {
+  const fixture = backend({ qmdContentType: 'resource' });
+
+  const result = await fixture.backend.get({ logical_id: 'implement-feature' });
+
+  assert.equal(result.status, 'ok');
+  assert.match(result.document.content, /bounded runtime/u);
 });
 
 test('fails closed for a missing document or manifest/body mismatch without local fallback', async () => {

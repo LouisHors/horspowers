@@ -105,7 +105,7 @@ function manifest(configPage, overrides = {}) {
   return { ...value, ...overrides };
 }
 
-function fakeQmd(pages) {
+function fakeQmd(pages, { contentType = 'text' } = {}) {
   const calls = [];
   return {
     calls,
@@ -113,9 +113,13 @@ function fakeQmd(pages) {
       async getExact(uri) {
         calls.push(uri);
         if (!pages.has(uri)) return { ok: false, error_code: 'qmd_get_not_found' };
+        const text = pages.get(uri);
+        const content = contentType === 'resource'
+          ? [{ type: 'resource', resource: { uri, mimeType: 'text/markdown', text } }]
+          : [{ type: 'text', text }];
         return {
           ok: true,
-          result: { content: [{ type: 'text', text: pages.get(uri) }] }
+          result: { content }
         };
       },
       async query() {
@@ -227,6 +231,25 @@ test('resolves Registry, config, and manifest through exactly three exact qmd re
   assert.equal(result.config.project_id, 'ugnas/ugcli-lib');
   assert.equal(result.config_revision, 1);
   assert.deepEqual(calls, [REGISTRY_URI, CONFIG_URI, MANIFEST_URI]);
+});
+
+test('resolves Registry, config, and manifest when qmd returns resource content blocks', async () => {
+  const configPage = page('horspowers-config', projectConfig(), '# config page\r\n');
+  const manifestPage = page('horspowers-manifest', manifest(configPage));
+  const { client } = fakeQmd(new Map([
+    [REGISTRY_URI, page('horspowers-registry', registry())],
+    [CONFIG_URI, configPage],
+    [MANIFEST_URI, manifestPage]
+  ]), { contentType: 'resource' });
+
+  const result = await resolveWikiProjectConfig({
+    identity: identity(),
+    hostConfig: hostConfig(),
+    qmdClient: client
+  });
+
+  assert.equal(result.status, 'ready');
+  assert.equal(result.config_revision, 1);
 });
 
 test('fails closed without local fallback for unavailable, unregistered, invalid, and incompatible external configuration', async () => {
