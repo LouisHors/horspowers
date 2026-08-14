@@ -80,5 +80,12 @@
     "title": "Wiki project ID entropy false positive",
     "relatedDocs": {},
     "updatedAt": "2026-08-14T01:41:56.127Z"
+  },
+  "2026-08-14-bug-wiki-inbox-小写文件名兼容性.md": {
+    "type": "bug",
+    "file": "2026-08-14-bug-wiki-inbox-小写文件名兼容性.md",
+    "title": "Wiki Inbox 小写文件名兼容性",
+    "relatedDocs": {},
+    "updatedAt": "2026-08-14T02:41:06.376Z"
   }
 }
