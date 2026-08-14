@@ -69,7 +69,7 @@ const FULLWIDTH_OPAQUE_PROJECT_IDENTIFIER = `fixture/${OPAQUE_IDENTIFIER_CORE.re
     ? 0xff10 + Number(character)
     : 0xff41 + character.charCodeAt(0) - 'a'.charCodeAt(0)))}`;
 const SEMANTIC_LOOKING_OPAQUE_IDENTIFIER = 'ther-inat-onre-comel-iquve';
-const NESTED_READABLE_PROJECT_ID = 'platform/service/authorization-configuration-observability';
+const NESTED_READABLE_PROJECT_ID = 'ugnas-gitlab/ugos-pro/service/ug-system-cli';
 
 function sha256(value) {
   return createHash('sha256').update(value, 'utf8').digest('hex');

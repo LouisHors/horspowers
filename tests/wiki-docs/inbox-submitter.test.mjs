@@ -64,7 +64,7 @@ const FULLWIDTH_OPAQUE_PROJECT_IDENTIFIER = `fixture/${OPAQUE_IDENTIFIER_CORE.re
     ? 0xff10 + Number(character)
     : 0xff41 + character.charCodeAt(0) - 'a'.charCodeAt(0)))}`;
 const SEMANTIC_LOOKING_OPAQUE_IDENTIFIER = 'ther-inat-onre-comel-iquve';
-const NESTED_READABLE_PROJECT_ID = 'platform/service/authorization-configuration-observability';
+const NESTED_READABLE_PROJECT_ID = 'ugnas-gitlab/ugos-pro/service/ug-system-cli';
 
 function metadata(operation = 'create') {
   return {
@@ -210,7 +210,11 @@ test('uses the same strict metadata envelope for every mutation operation and se
   }
 
   const readableProjectId = metadata();
-  for (const projectId of ['fixture/company-project', 'company/project-wiki-external-docs', NESTED_READABLE_PROJECT_ID]) {
+  for (const projectId of [
+    'fixture/company-project',
+    'company/project-wiki-external-docs',
+    NESTED_READABLE_PROJECT_ID
+  ]) {
     readableProjectId.project_id = projectId;
     assert.doesNotThrow(() => renderInboxSubmission({ metadata: readableProjectId, proposedDocument: '# Proposal\n' }), projectId);
   }

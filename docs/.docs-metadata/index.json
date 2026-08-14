@@ -73,5 +73,12 @@
     "file": "2026-01-21-analysis-document-flow-gaps.md",
     "archived": true,
     "updatedAt": "2026-05-11T09:12:53.814Z"
+  },
+  "2026-08-14-bug-wiki-project-id-entropy-false-positive.md": {
+    "type": "bug",
+    "file": "2026-08-14-bug-wiki-project-id-entropy-false-positive.md",
+    "title": "Wiki project ID entropy false positive",
+    "relatedDocs": {},
+    "updatedAt": "2026-08-14T01:41:56.127Z"
   }
 }
