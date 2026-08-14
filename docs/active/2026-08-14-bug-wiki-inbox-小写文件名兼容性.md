@@ -11,5 +11,10 @@ filenameForSubmission used uppercase T and Z in its UTC timestamp. The generator
 
 ## Verification
 - Target test: 5 passed, 0 failed.
-- Wiki docs regression: 201 passed, 0 failed.
-- Jump-host sync and real docs migration remain pending until the PR is available.
+- Local Wiki docs regression: 201 passed, 0 failed.
+- Jump-host Wiki docs regression with Node 24.18.0: 201 passed, 0 failed.
+- A real runtime update created lowercase Inbox file 20260814t031628347z-4341510e-c090-4bc1-a892-b96166adc3f7.md.
+- The reviewed migration inventory is readable as ug-system-cli-context revision 2 with a matching manifest hash.
+
+## Remaining scope
+The revision records three active documents, seven plans, and five context guides at directory level. Per-document safe summaries remain future migration work; every project docs file remains in place.
