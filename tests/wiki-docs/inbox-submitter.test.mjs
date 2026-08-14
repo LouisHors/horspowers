@@ -156,7 +156,7 @@ test('renders one metadata block and submits its complete UTF-8 payload only thr
   const result = await submitter.submit({ submissionId: entry.submission_id, payload });
 
   assert.equal(result.ok, true);
-  assert.match(result.filename, /^20260810T010203004Z-[0-9a-f-]{36}\.md$/u);
+  assert.match(result.filename, /^20260810t010203004z-[0-9a-f-]{36}\.md$/u);
   assert.equal(result.filename, filenameForSubmission(entry.submission_id, new Date('2026-08-10T01:02:03.004Z')));
   assert.equal(fake.calls.length, 1);
   assert.equal(fake.calls[0].command, '/retained-fixture/wiki-inbox-submit');
