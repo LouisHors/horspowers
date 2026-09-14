@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -75,4 +76,31 @@ test('runner rejects a non-canonical cwd and request-side execution overrides', 
       /command|argv|env|path|override/iu
     );
   }
+});
+
+test('runner preserves the Electron run-as-node marker without widening the child environment', async () => {
+  let seenEnvironment = null;
+  const child = new EventEmitter();
+  child.stdout = new EventEmitter();
+  child.stderr = new EventEmitter();
+  child.kill = () => {};
+  const run = createVerificationRunner({
+    profiles: profiles(),
+    environment: { PATH: '/usr/bin', ELECTRON_RUN_AS_NODE: '1', SECRET_TOKEN: 'must-not-leak' },
+    spawnImpl: (_program, _args, options) => {
+      seenEnvironment = options.env;
+      process.nextTick(() => {
+        child.stdout.emit('data', Buffer.from('ok\n'));
+        child.emit('close', 0);
+      });
+      return child;
+    }
+  });
+
+  const result = await run({ profile: 'pass', cwd: repoRoot, capabilities: { local_process: true, external_network: false } });
+
+  assert.equal(result.status, 'passed');
+  assert.equal(seenEnvironment.ELECTRON_RUN_AS_NODE, '1');
+  assert.equal(seenEnvironment.PATH, '/usr/bin');
+  assert.equal(Object.hasOwn(seenEnvironment, 'SECRET_TOKEN'), false);
 });
