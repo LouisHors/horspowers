@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "hps": {
+      "command": "__HPS_INSTALL_ROOT__/bin/hps",
+      "args": ["serve", "--stdio"]
+    }
+  }
+}
