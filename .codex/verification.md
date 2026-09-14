@@ -20,10 +20,16 @@ bash tests/claude-code/run-skill-tests.sh
 bash tests/opencode/run-tests.sh
 ```
 
+## Prerequisites
+
+- Node.js is required for the shared runtime, the `hps` CLI and the portable timeout helper.
+- Repository context collection prefers `ripgrep` (`rg`) and it is strongly recommended; without it the collector falls back to `git`/`grep`, which is slower and can return fewer results. Install with `brew install ripgrep` or your package manager.
+- Host runner scripts use `scripts/portable-timeout.sh`, which delegates to the Node helper, so GNU `timeout` is no longer required. If a test still calls `timeout` directly, install GNU coreutils on macOS.
+
 ## Notes
 
 - Run commands from the repository root.
-- Some Codex compatibility tests require a `timeout` command. On macOS, install GNU coreutils or run the narrower relevant test if `timeout` is unavailable.
+- On an Electron-based Node harness, `process.execPath` can be the Electron binary. The verification runner preserves the `ELECTRON_RUN_AS_NODE` marker so spawned Node profiles still execute; do not strip that variable from the child environment.
 - Integration tests are slower and should be run when workflow behavior changes:
 
 ```bash
