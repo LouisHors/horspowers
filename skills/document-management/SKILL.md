@@ -11,7 +11,18 @@ description: "You MUST use this when the user wants project documentation initia
 
 ## 统一入口
 
-先阅读 `horspowers:using-horspowers/references/document-runtime.md`。确定性边界优先使用 HPS `task_prepare` 与已注册的 document MCP tools；无 MCP 时用安装根下的 `hps call` JSON stdin。HPS 不可发现或协议错误时，才用 `document-runtime-cli.mjs` 兼容 wrapper。所有请求仍必须经过统一 runtime 的 `resolve`、`get`、`search`、`create`、`update`、`archive`、`restore`、`config-change` 或 `record-session`，不得用配置标记、目录存在性或文件路径决定 backend。
+先阅读 `horspowers:using-horspowers/references/document-runtime.md`。确定性边界优先使用 HPS `task_prepare` 与已注册的 document MCP tools；无 MCP 时用安装根下的 `hps call` JSON stdin。所有请求仍必须经过统一 runtime 的 `resolve`、`get`、`search`、`create`、`update`、`archive`、`restore`、`config-change` 或 `record-session`，不得用配置标记、目录存在性或文件路径决定 backend。
+
+### 读写传输（Phase 1/2）
+
+HPS 目前只公开 document **只读**工具。写操作按设计留到 Phase 5，`hps call` 对它们稳定返回 `operation_unavailable`；这不是 HPS 不可用，也不构成绕过 runtime 的理由。
+
+| 运行时动作 | 默认入口 | 回退 |
+| --- | --- | --- |
+| `resolve` / `get` / `search` / `manifest` / `verify` | HPS MCP `document_*`，或 `hps call`（先 `task_prepare` 取 scope） | HPS 不可发现或协议错误时，用 `document-runtime-cli.mjs` |
+| `create` / `update` / `archive` / `restore` / `config-change` / `record-session` | `document-runtime-cli.mjs` 受控兼容写入入口 | 无；禁止退回手工作文件操作 |
+
+写入同样使用 `{schema_version, cwd, action, request, confirmed}` 的 JSON stdin 契约，正文不得进入 argv、环境变量或命令字符串。`operation_unavailable` 只表示该动作尚未在 HPS 侧公开，写入语义仍由统一 DocumentRuntime 维护。
 
 先 `resolve`：
 

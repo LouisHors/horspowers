@@ -62,12 +62,14 @@ benchmark 使用真实 worktree cold CLI、warm snapshot、direct prepare 以及
 - 安全检查递归覆盖所有字符串和容器，不依赖 `content/body/path` 等字段名；拒绝结果、错误和 progress 均不得回显原文。
 - Expected：合法短小控制面状态仍可 round-trip；所有正文载体稳定拒绝且没有 state/cache mutation。
 
-### 批次 10：Skill 与兼容入口默认迁移 - 部分完成（route/hooks 已收口）
+### 批次 10：Skill 与兼容入口默认迁移 - 已完成
 
-- 文件：`skills/using-horspowers/SKILL.md`、`skills/using-horspowers/references/host-path-resolution.md`、`skills/document-management/SKILL.md`、`skills/brainstorming/SKILL.md`、`lib/session-hook-runtime.mjs`、相关旧 CLI/wrapper 和调用链测试。
+- 文件：`skills/using-horspowers/SKILL.md`、`skills/using-horspowers/references/host-path-resolution.md`、`skills/document-management/SKILL.md`、`skills/brainstorming/SKILL.md`、`lib/session-hook-runtime.mjs`、`lib/hps-verification.mjs`、相关旧 CLI/wrapper 和调用链测试。
 - Skill 保留判断、交互与编排，只把 route、document、context 和 session 的确定性步骤切到 HPS/Core；旧 stdin/stdout 契约继续可用。
 - 优先调用已发现安装根下的 `bin/hps`，无 Sidecar 时回退 `hps call` 或薄 wrapper；禁止扫描用户目录或猜路径。
-- Expected：调用链探针证明正常 Skill 路径进入 shared Core，旧入口回归与 direct 快路径均保持通过。当前 route/hook 调用链已满足；document 写入口仍保留 DocumentRuntime compatibility path。
+- document 读写按 Phase 边界分流：只读走 HPS `document_*`/`hps call`，写操作走受控 `document-runtime-cli.mjs` 兼容入口；HPS 对写操作稳定返回 `operation_unavailable`，不得据此绕过 runtime。该分流已写入 document-management Skill。
+- Expected：调用链探针证明正常 Skill 路径进入 shared Core，旧入口回归与 direct 快路径均保持通过。
+- 证据（2026-09-14）：`tests/hps/skill-entrypoint-chain.test.mjs` 以真实子进程证明 `bin/hps call` 的 `task_prepare`/`document_resolve` 进入 shared Core、Phase 5 写操作返回 `operation_unavailable`、`document-runtime-cli.mjs` 兼容写入协议保持，以及 Skill 文本的读写分流；`tests/workflow-router/cli.test.mjs` 与 `tests/hps/legacy-route-bridge.test.mjs` 覆盖 route bridge 与 legacy 回退；两者均已加入 `hps-regression` verification profile。route/hook 调用链此前已收口。
 
 ### 批次 11：真实 capability adapter 与 MCP 注册/发现 - 部分完成（fixture + project-local 实宿主）
 
@@ -108,7 +110,7 @@ benchmark 使用真实 worktree cold CLI、warm snapshot、direct prepare 以及
 |---|---|---|
 | 代码存在 | 已完成 | Core、CLI、MCP 与 19 个 operation 在 `codex/hps-agent-cli` worktree 可调用 |
 | 测试通过 | 部分完成 | 386/386 Core/collector/Wiki/HPS/route/hooks/adapter/registration/portable 基线通过，native probe 专项 9/9、host registration 16/16 通过；Claude 真实 probe pass，Codex 真实 probe 被 invalid_api_key 阻塞；Codex 默认 runner 仍待收口，OpenCode 按决策排除 |
-| Skill 接入 | 部分完成 | using/brainstorming/document-management 默认确定性边界、route bridge、SessionStart/End HPS gate 已接入；document 写入口仍是兼容路径 |
+| Skill 接入 | 已完成 | using/brainstorming/document-management 默认确定性边界、route bridge、SessionStart/End HPS gate 已接入；document 读走 HPS、写走受控兼容入口；`tests/hps/skill-entrypoint-chain.test.mjs` 调用链探针通过 |
 | 主线集成 | 未完成 | 当前文件未提交，分支未合入主线，无 PR 事实 |
 | 发布 | 未完成 | 无版本、安装、MCP 注册和发布 smoke 证据 |
 

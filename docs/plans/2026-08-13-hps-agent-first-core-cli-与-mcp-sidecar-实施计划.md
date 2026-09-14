@@ -58,7 +58,7 @@
 
 | 差距 | 当前事实 | 完成要求 |
 |---|---|---|
-| Skill 默认接入 | using/brainstorming/document-management、route、hooks 已进入 HPS；document 写仍走兼容路径 | 高频确定性路径默认调用 HPS/Core；旧入口只保留为薄兼容层，并有调用链测试 |
+| Skill 默认接入 | 已完成：using/brainstorming/document-management、route、hooks 已进入 HPS；document 读走 HPS、写走受控兼容入口，并有调用链探针 | 高频确定性路径默认调用 HPS/Core；旧入口只保留为薄兼容层，并有调用链测试 |
 | MCP 宿主注册 | 已完成；主根 `bin/hps`、Claude/Codex project-local MCP 连接通过 | 保持不修改用户全局配置；Codex 默认 runner 仍需 API key 有效 |
 | `project_snapshot` scope | schema 接受 `scope_id`，运行时未使用该参数 | 解析、校验并复用 live scope；过期或不匹配返回稳定错误 |
 | `project_snapshot` remote | 设计要求 remote 摘要，当前结果缺失 | 返回规范化、脱敏、固定字段的 remote 摘要并补等价性测试 |
@@ -107,7 +107,7 @@
 |---|---|---|
 | 代码存在 | 已完成 | 指定 worktree 中实现可调用 |
 | 测试通过 | 部分完成 | Core/collector/Wiki/HPS/route/hooks/adapter/registration/portable fresh 全绿；Codex/Claude 显式宿主探针有证据，完整默认 runner/native root 仍待收口；OpenCode 按决策排除 |
-| Skill 接入 | 部分完成 | route bridge、hooks HPS gate 与兼容 wrapper 测试通过；document 写入口仍保留 compatibility path |
+| Skill 接入 | 已完成 | route bridge、hooks HPS gate、`tests/hps/skill-entrypoint-chain.test.mjs` 调用链探针与兼容 wrapper 测试通过；document 读走 HPS、写走受控 compatibility path |
 | 主线集成 | 未完成 | commit/PR/merge 事实 |
 | 发布 | 未完成 | 版本、安装、宿主注册与发布 smoke |
 
