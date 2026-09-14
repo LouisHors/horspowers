@@ -42,11 +42,6 @@ if ! command -v claude > /dev/null 2>&1; then
     exit 0
 fi
 
-if ! command -v timeout > /dev/null 2>&1; then
-    echo "SKIPPED: timeout command not found; Claude probes were not run"
-    exit 0
-fi
-
 echo "Test 1: Brainstorming should gate user review on structured spec review..."
 
 output=$(run_claude "Read $BRAINSTORMING_SKILL and $SPEC_REVIEW_PROMPT in the current workspace and answer only from those files. A design is referenced by $DESIGN_DOC_REF. Before the user review gate, what review must happen? Mention the reviewer prompt, local-path-or-Wiki-reference support, whether the reviewer receives the complete design body, and whether blocking issues require rerunning the review." 180)

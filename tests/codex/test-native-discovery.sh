@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
+PORTABLE_TIMEOUT="$REPO_ROOT/scripts/portable-timeout.sh"
 AGENTS_SKILLS_DIR="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 
 # shellcheck source=tests/codex/skill-dir-helper.sh
@@ -32,7 +33,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! timeout 120s "$CODEX_BIN" exec "What horspowers skills are available in this session? List the skill names only." >"$output_file" 2>&1; then
+if ! "$PORTABLE_TIMEOUT" 120s -- "$CODEX_BIN" exec "What horspowers skills are available in this session? List the skill names only." >"$output_file" 2>&1; then
   echo "  [FAIL] codex exec did not complete successfully"
   sed -n '1,120p' "$output_file"
   exit 1

@@ -57,6 +57,16 @@ test('accepts the bounded SSH qmd host configuration', () => {
   assert.deepEqual(result.config, config);
 });
 
+test('accepts an explicit absolute personal Wiki root as optional host-only provenance', () => {
+  const config = validHostConfig();
+  config.wiki.local_root = '/Users/example/hors/my-code-wiki';
+
+  const result = validateHostConfig(config);
+
+  assert.equal(result.ok, true);
+  assert.equal(result.config.wiki.local_root, config.wiki.local_root);
+});
+
 test('rejects unknown fields at every configuration boundary', () => {
   const rootUnknown = validHostConfig();
   rootUnknown.unexpected = true;

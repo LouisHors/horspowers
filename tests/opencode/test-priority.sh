@@ -5,6 +5,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PORTABLE_TIMEOUT="$SCRIPT_DIR/../../scripts/portable-timeout.sh"
 
 echo "=== Test: Skill Priority Resolution ==="
 
@@ -103,7 +104,7 @@ echo "  Running from outside project directory..."
 
 # Run from HOME (not in project) - should get personal version
 cd "$HOME"
-output=$(timeout 60s opencode run --print-logs "Use the use_skill tool to load the priority-test skill. Show me the exact content including any PRIORITY_MARKER text." 2>&1) || {
+output=$("$PORTABLE_TIMEOUT" 60s -- opencode run --print-logs "Use the use_skill tool to load the priority-test skill. Show me the exact content including any PRIORITY_MARKER text." 2>&1) || {
     exit_code=$?
     if [ $exit_code -eq 124 ]; then
         echo "  [FAIL] OpenCode timed out after 60s"
@@ -129,7 +130,7 @@ echo "  Running from project directory..."
 
 # Run from project directory - should get project version
 cd "$TEST_HOME/test-project"
-output=$(timeout 60s opencode run --print-logs "Use the use_skill tool to load the priority-test skill. Show me the exact content including any PRIORITY_MARKER text." 2>&1) || {
+output=$("$PORTABLE_TIMEOUT" 60s -- opencode run --print-logs "Use the use_skill tool to load the priority-test skill. Show me the exact content including any PRIORITY_MARKER text." 2>&1) || {
     exit_code=$?
     if [ $exit_code -eq 124 ]; then
         echo "  [FAIL] OpenCode timed out after 60s"
@@ -156,7 +157,7 @@ echo ""
 echo "Test 4: Testing horspowers: prefix forces superpowers version..."
 
 cd "$TEST_HOME/test-project"
-output=$(timeout 60s opencode run --print-logs "Use the use_skill tool to load horspowers:priority-test specifically. Show me the exact content including any PRIORITY_MARKER text." 2>&1) || {
+output=$("$PORTABLE_TIMEOUT" 60s -- opencode run --print-logs "Use the use_skill tool to load horspowers:priority-test specifically. Show me the exact content including any PRIORITY_MARKER text." 2>&1) || {
     exit_code=$?
     if [ $exit_code -eq 124 ]; then
         echo "  [FAIL] OpenCode timed out after 60s"
@@ -178,7 +179,7 @@ echo ""
 echo "Test 5: Testing project: prefix forces project version..."
 
 cd "$HOME"  # Run from outside project but with project: prefix
-output=$(timeout 60s opencode run --print-logs "Use the use_skill tool to load project:priority-test specifically. Show me the exact content." 2>&1) || {
+output=$("$PORTABLE_TIMEOUT" 60s -- opencode run --print-logs "Use the use_skill tool to load project:priority-test specifically. Show me the exact content." 2>&1) || {
     exit_code=$?
     if [ $exit_code -eq 124 ]; then
         echo "  [FAIL] OpenCode timed out after 60s"

@@ -3,6 +3,8 @@
 
 # Debug mode - set to 1 to enable detailed output
 TEST_DEBUG_MODE="${TEST_DEBUG_MODE:-0}"
+TEST_HELPER_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PORTABLE_TIMEOUT="${PORTABLE_TIMEOUT:-$TEST_HELPER_DIR/../../scripts/portable-timeout.sh}"
 
 # Run Claude Code with a prompt and capture output
 # Usage: run_claude "prompt text" [timeout_seconds] [allowed_tools]
@@ -25,7 +27,7 @@ run_claude() {
     fi
 
     # Run Claude in headless mode with timeout
-    if timeout "$timeout" bash -c "$cmd" > "$output_file" 2>&1; then
+    if "$PORTABLE_TIMEOUT" "${timeout}s" -- bash -c "$cmd" > "$output_file" 2>&1; then
         local output=$(cat "$output_file")
         local output_len=$(echo "$output" | wc -c)
 

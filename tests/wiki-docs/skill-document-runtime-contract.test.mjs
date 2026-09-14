@@ -65,6 +65,27 @@ const establishedNodeFsMutationInventories = new Map([
   ])]
 ]);
 
+// The HPS host-registration generator is an explicit configuration writer,
+// not a document writer. Keep its tiny mutation surface reviewed separately
+// so the repository audit cannot silently turn it into a general write escape
+// hatch.
+const hpsRegistrationMutationInventory = new Map([
+  ['scripts/install-hps-mcp.mjs', new Set([
+    'node-fs-mutation:mkdir',
+    'node-fs-mutation:writeFile'
+  ])]
+]);
+
+// Native host probing writes only bounded, collision-resistant diagnostics to
+// an OS temporary directory. It never targets project documentation or user
+// configuration, so keep this diagnostic surface explicitly reviewed.
+const hpsProbeMutationInventory = new Map([
+  ['lib/hps-native-host-probe.mjs', new Set([
+    'node-fs-mutation:mkdtemp',
+    'node-fs-mutation:writeFile'
+  ])]
+]);
+
 const runtimeTextExtensions = new Set([
   '.bash', '.c', '.cc', '.cjs', '.cmd', '.coffee', '.cpp', '.cs', '.fish',
   '.go', '.h', '.java', '.js', '.json', '.jsx', '.lua', '.mjs', '.php',
@@ -823,7 +844,8 @@ test('brainstorming resolves the runtime before collecting company Wiki context'
   const collector = await readRelative('skills/brainstorming/scripts/collect-context.mjs');
   const runtimeReference = await readRelative('skills/using-horspowers/references/document-runtime.md');
 
-  assert.match(skill, /调用 `resolve`[\s\S]*collect-context\.mjs/u);
+  assert.match(skill, /task_prepare[\s\S]*collect-context\.mjs/u);
+  assert.match(skill, /不要在同一请求中同时执行 HPS 与旧 collector/u);
   assert.match(skill, /内部调用统一运行时的 `resolve`[\s\S]*identity_status\s*===\s*["']external["']/u);
   assert.match(skill, /ambiguous_company_remote[\s\S]*调用方不能用输入字段/u);
   assert.match(runtimeReference, /内部调用统一运行时的 `resolve`[\s\S]*identity_status\s*===\s*["']external["']/u);
@@ -923,6 +945,18 @@ test('repository audit rejects direct document operations outside the exact allo
     const establishedInventory = establishedNodeFsMutationInventories.get(rel);
     if (establishedInventory) {
       assert.deepEqual(new Set(operationIds), establishedInventory, `${rel} must not gain an unreviewed Node fs mutation`);
+      continue;
+    }
+
+    const hpsRegistrationInventory = hpsRegistrationMutationInventory.get(rel);
+    if (hpsRegistrationInventory) {
+      assert.deepEqual(new Set(operationIds), hpsRegistrationInventory, `${rel} must retain its bounded registration writes`);
+      continue;
+    }
+
+    const hpsProbeInventory = hpsProbeMutationInventory.get(rel);
+    if (hpsProbeInventory) {
+      assert.deepEqual(new Set(operationIds), hpsProbeInventory, `${rel} must retain its bounded probe artifact writes`);
       continue;
     }
 

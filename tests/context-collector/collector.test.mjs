@@ -1,7 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
+import os from 'node:os';
+import path from 'node:path';
 
 import { collectContext, validateContextInput } from '../../skills/brainstorming/scripts/collect-context.mjs';
+import { collectContext as collectSharedContext } from '../../lib/context-collector.mjs';
 
 function context(overrides = {}) {
   return {
@@ -42,6 +46,7 @@ function fakeDependencies(options = {}) {
       return response;
     },
     resolveRuntime: async () => hasRuntimeResult ? runtimeResult : { status: 'ready', identity_status: 'external' },
+    realpath: async (filePath) => filePath,
     readFile: async (filePath) => {
       if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs));
       if (!(filePath in readFiles)) throw Object.assign(new Error('missing fixture'), { code: 'ENOENT' });
@@ -103,12 +108,48 @@ test('enumerates files before grep when grep lacks exclude-dir support', async (
 test('uses trusted Wiki Markdown fallback when qmd is unavailable', async () => {
   const dependencies = fakeDependencies({
     capabilities: { git: true },
+    runtimeResult: {
+      status: 'ready', identity_status: 'external', wiki_root_trusted: true, wiki_root: '/wiki',
+      wiki_root_provenance: {
+        source: 'validated_host_config', field: 'wiki.local_root', collection: 'my-code-wiki', canonical: true
+      }
+    },
     commands: { grep: commandResult('/wiki/README.md:1:needle\n'), git: commandResult() }
   });
   const result = await collectContext(context({ wiki_root: '/wiki' }), dependencies);
 
   assert.equal(result.branches.wiki.tool, 'grep -RIn');
   assert.equal(result.branches.wiki.status, 'ok');
+});
+
+test('fails closed when wiki_root is not verified by the runtime', async () => {
+  const dependencies = fakeDependencies({
+    capabilities: { git: true },
+    runtimeResult: { status: 'ready', identity_status: 'external' },
+    commands: { grep: commandResult('/wiki/README.md:1:needle\n'), git: commandResult() }
+  });
+  const result = await collectContext(context({ wiki_root: '/wiki' }), dependencies);
+  assert.equal(result.branches.wiki.status, 'skipped');
+  assert.equal(result.branches.wiki.error_code, 'NO_TRUSTED_WIKI');
+  assert.equal(dependencies.calls.some((call) => call.command === 'grep' && call.cwd === '/wiki'), false);
+});
+
+test('uses only the runtime canonical Wiki root when a request supplies a different root', async () => {
+  const dependencies = fakeDependencies({
+    capabilities: { git: true },
+    runtimeResult: {
+      status: 'ready', identity_status: 'external', wiki_root_trusted: true, wiki_root: '/verified/wiki',
+      wiki_root_provenance: {
+        source: 'validated_host_config', field: 'wiki.local_root', collection: 'my-code-wiki', canonical: true
+      }
+    },
+    commands: { grep: commandResult('/verified/wiki/README.md:1:needle\n'), git: commandResult() }
+  });
+  const result = await collectContext(context({ wiki_root: '/request-controlled/wiki' }), dependencies);
+
+  assert.equal(result.branches.wiki.status, 'ok');
+  assert.equal(dependencies.calls.find((call) => call.command === 'grep' && call.args.includes('--include=*.md'))?.cwd, '/verified/wiki');
+  assert.equal(dependencies.calls.some((call) => call.command === 'grep' && call.cwd === '/request-controlled/wiki'), false);
 });
 
 test('runs qmd query only after fewer than three unique search hits and retains search hits on query failure', async () => {
@@ -189,6 +230,36 @@ test('never reads sensitive known entries and records the skipped count', async 
   assert.deepEqual(result.branches.entries.items.map((item) => item.uri_or_path), ['/repo/README.md']);
 });
 
+test('never follows a known-entry symlink outside the canonical project root', async () => {
+  const fixtureRoot = await mkdtemp(path.join(os.tmpdir(), 'horspowers-entry-containment-'));
+  const projectRoot = path.join(fixtureRoot, 'project');
+  const outsideFile = path.join(fixtureRoot, 'outside-sensitive.md');
+  await mkdir(projectRoot);
+  await writeFile(outsideFile, 'outside secret marker', 'utf8');
+  const linkedEntry = path.join(projectRoot, 'README.md');
+  await symlink(outsideFile, linkedEntry);
+
+  const reads = [];
+  const result = await collectSharedContext({
+    schema_version: 1,
+    cwd: projectRoot,
+    query: 'outside secret marker',
+    wiki_root: null,
+    known_entry_files: [linkedEntry]
+  }, {
+    capabilities: { rg: false, qmd: false, git: false, grepExcludeDir: true, untracked: false },
+    resolveRuntime: async () => ({ status: 'ready', identity_status: 'external' }),
+    runCommand: async () => commandResult('', { code: 1 }),
+    readFile: async (filePath) => {
+      reads.push(filePath);
+      return readFile(filePath, 'utf8');
+    }
+  });
+
+  assert.equal(reads.includes(linkedEntry), false);
+  assert.equal(result.branches.entries.items.some((entry) => entry.excerpt.includes('outside secret marker')), false);
+});
+
 test('starts all branches concurrently instead of serializing independent searches', async () => {
   const dependencies = fakeDependencies({
     capabilities: { rg: true, qmd: true, git: true },
@@ -216,6 +287,79 @@ test('returns bounded timeout output when the overall deadline expires', async (
   assert.ok(result.total_duration_ms < 200);
 });
 
+test('an already-aborted external signal prevents runtime resolution, capability probes, and commands', async () => {
+  const controller = new AbortController();
+  controller.abort();
+  let resolveCalls = 0;
+  let commandCalls = 0;
+  const result = await collectSharedContext(context(), {
+    signal: controller.signal,
+    resolveRuntime: async () => { resolveCalls += 1; return { status: 'ready', identity_status: 'external' }; },
+    runCommand: async () => { commandCalls += 1; return commandResult(); },
+    overallTimeoutMs: 1_000
+  });
+
+  assert.equal(resolveCalls, 0);
+  assert.equal(commandCalls, 0);
+  assert.equal(result.truncated, true);
+  assert.equal(result.branches.repository.status, 'timeout');
+});
+
+test('a running external abort reaches child commands and returns a bounded timeout envelope', async () => {
+  const controller = new AbortController();
+  let commandSignal;
+  let commandStarted;
+  const started = new Promise((resolve) => { commandStarted = resolve; });
+  const dependencies = {
+    capabilities: { rg: true, qmd: false, git: false, grepExcludeDir: true, untracked: false },
+    resolveRuntime: async () => ({ status: 'ready', identity_status: 'external' }),
+    runCommand: async ({ signal }) => {
+      commandSignal = signal;
+      commandStarted();
+      await new Promise((resolve) => signal.addEventListener('abort', resolve, { once: true }));
+      return commandResult('', { code: 1, timed_out: true, truncated: true });
+    },
+    realpath: async (filePath) => filePath,
+    readFile: async () => ''
+  };
+  const startedAt = performance.now();
+  const resultPromise = collectSharedContext(context(), {
+    ...dependencies,
+    signal: controller.signal,
+    overallTimeoutMs: 1_000
+  });
+
+  await started;
+  controller.abort();
+  const result = await resultPromise;
+
+  assert.ok(performance.now() - startedAt < 500, 'external abort should not wait for the internal deadline');
+  assert.equal(commandSignal?.aborted, true);
+  assert.equal(result.truncated, true);
+  assert.equal(result.branches.repository.status, 'timeout');
+});
+
+test('removes the external abort listener after collection settles', async () => {
+  const external = new EventTarget();
+  let adds = 0;
+  let removes = 0;
+  const addEventListener = external.addEventListener.bind(external);
+  const removeEventListener = external.removeEventListener.bind(external);
+  external.addEventListener = (...args) => { adds += 1; return addEventListener(...args); };
+  external.removeEventListener = (...args) => { removes += 1; return removeEventListener(...args); };
+
+  await collectSharedContext(context(), {
+    signal: external,
+    capabilities: { rg: false, qmd: false, git: false, grepExcludeDir: true, untracked: false },
+    resolveRuntime: async () => ({ status: 'ready', identity_status: 'external' }),
+    realpath: async (filePath) => filePath,
+    readFile: async () => ''
+  });
+
+  assert.equal(adds, 1);
+  assert.equal(removes, 1);
+});
+
 test('includes runtime resolution in the overall timeout boundary', async () => {
   const dependencies = fakeDependencies({ capabilities: { rg: true } });
   dependencies.resolveRuntime = async () => new Promise(() => {});
@@ -231,9 +375,69 @@ test('includes runtime resolution in the overall timeout boundary', async () => 
   assert.equal(dependencies.calls.length, 0);
 });
 
+test('closes a qmd client returned after the runtime deadline and propagates abort', async () => {
+  let release;
+  let signalSeen = null;
+  let closed = 0;
+  const gate = new Promise((resolve) => { release = resolve; });
+  const dependencies = fakeDependencies({ capabilities: { rg: true } });
+  dependencies.resolveRuntime = async (_cwd, signal) => {
+    signalSeen = signal;
+    await gate;
+    return {
+      status: 'ready',
+      identity_status: 'company',
+      wiki: { qmd_client: { close: async () => { closed += 1; } } }
+    };
+  };
+
+  const resultPromise = collectContext(context(), { ...dependencies, overallTimeoutMs: 20 });
+  await new Promise((resolve) => setTimeout(resolve, 35));
+  const result = await resultPromise;
+
+  assert.equal(result.truncated, true);
+  assert.equal(result.branches.repository.status, 'timeout');
+  assert.equal(signalSeen?.aborted, true);
+  assert.equal(closed, 0);
+
+  release();
+  await new Promise((resolve) => setTimeout(resolve, 0));
+  assert.equal(closed, 1);
+});
+
 test('rejects invalid collector envelopes before starting commands', () => {
   assert.throws(() => validateContextInput(context({ cwd: 'relative/path' })), /absolute/i);
   assert.throws(() => validateContextInput(context({ query: 'x'.repeat(4097) })), /4 KiB/i);
   assert.throws(() => validateContextInput({ ...context(), wiki_mode: 'global-search' }), /fields/i);
   assert.throws(() => validateContextInput(context({ known_entry_files: ['/outside/readme.md'] })), /inside cwd/i);
+});
+
+test('rejects unsafe wiki roots and entry path carriers at the collector boundary', () => {
+  for (const input of [
+    context({ wiki_root: '/wiki;touch /tmp/pwned' }),
+    context({ wiki_root: '/repo/../outside' }),
+    context({ known_entry_files: ['/repo/README.md\nnext'] })
+  ]) {
+    assert.throws(() => validateContextInput(input), /safe absolute|inside cwd|wiki_root/iu);
+  }
+});
+
+test('shared collector resolves runtime exactly once before parallel branches', async () => {
+  let resolveCalls = 0;
+  const dependencies = fakeDependencies({
+    capabilities: { rg: true, git: true },
+    commands: {
+      rg: commandResult('README.md:1:needle\\n'),
+      git: commandResult('abc\\t1\\tcommit\\n')
+    }
+  });
+  dependencies.resolveRuntime = async () => {
+    resolveCalls += 1;
+    return { status: 'ready', identity_status: 'external' };
+  };
+
+  const result = await collectSharedContext(context(), dependencies);
+
+  assert.equal(resolveCalls, 1);
+  assert.equal(result.branches.repository.status, 'ok');
 });
