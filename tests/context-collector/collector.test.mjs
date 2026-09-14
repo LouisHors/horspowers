@@ -3,9 +3,10 @@ import assert from 'node:assert/strict';
 import { mkdir, mkdtemp, readFile, symlink, writeFile } from 'node:fs/promises';
 import os from 'node:os';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 import { collectContext, validateContextInput } from '../../skills/brainstorming/scripts/collect-context.mjs';
-import { collectContext as collectSharedContext } from '../../lib/context-collector.mjs';
+import { collectContext as collectSharedContext, spawnCommand } from '../../lib/context-collector.mjs';
 
 function context(overrides = {}) {
   return {
@@ -103,6 +104,41 @@ test('enumerates files before grep when grep lacks exclude-dir support', async (
 
   assert.equal(result.branches.repository.tool, 'grep -n (enumerated)');
   assert.equal(dependencies.calls.some((call) => call.command === 'git' && call.args.includes('ls-files')), true);
+  assert.equal(dependencies.calls.some((call) => call.command === 'git' && call.args.includes('-z')), true);
+});
+
+test('parses NUL-separated git file lists so non-ASCII paths stay unquoted', async () => {
+  const nonAscii = 'docs/计划-中文.md';
+  const expectedPath = path.join('/repo', nonAscii);
+  const dependencies = fakeDependencies({
+    capabilities: { git: true, untracked: true, grepExcludeDir: false },
+    commands: {
+      git: commandResult(`${nonAscii}\u0000src/app.mjs\u0000`),
+      grep: (request) => {
+        assert.equal(request.args.includes(expectedPath), true, request.args.join(' '));
+        return commandResult('');
+      }
+    }
+  });
+  const result = await collectContext(context(), dependencies);
+
+  assert.equal(result.branches.repository.tool, 'grep -n (enumerated)');
+  assert.equal(result.branches.repository.status, 'ok');
+});
+
+test('real git enumeration keeps non-ASCII tracked paths usable without rg', async () => {
+  const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+  const result = await collectSharedContext(
+    { schema_version: 1, cwd: repoRoot, query: 'zzz-hps-no-match-xyzzy', wiki_root: null, known_entry_files: [] },
+    {
+      resolveRuntime: async () => null,
+      capabilities: { rg: false, qmd: false, git: true, grepExcludeDir: false, untracked: true },
+      runCommand: spawnCommand
+    }
+  );
+
+  assert.equal(result.branches.repository.tool, 'grep -n (enumerated)');
+  assert.equal(result.branches.repository.status, 'ok');
 });
 
 test('uses trusted Wiki Markdown fallback when qmd is unavailable', async () => {
