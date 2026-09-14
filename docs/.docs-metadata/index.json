@@ -87,5 +87,23 @@
     "title": "Wiki Inbox 小写文件名兼容性",
     "relatedDocs": {},
     "updatedAt": "2026-08-14T02:41:06.376Z"
+  },
+  "2026-08-13-design-hps-agent-first-core-cli-与-mcp-sidecar.md": {
+    "type": "design",
+    "file": "2026-08-13-design-hps-agent-first-core-cli-与-mcp-sidecar.md",
+    "topic": "HPS Agent-first Core CLI 与 MCP Sidecar",
+    "updatedAt": "2026-08-13T10:21:21.818Z"
+  },
+  "2026-08-13-hps-agent-first-core-cli-与-mcp-sidecar-实施计划.md": {
+    "type": "plan",
+    "file": "2026-08-13-hps-agent-first-core-cli-与-mcp-sidecar-实施计划.md",
+    "feature": "HPS Agent-first Core CLI 与 MCP Sidecar 实施计划",
+    "updatedAt": "2026-08-13T10:26:51.221Z"
+  },
+  "2026-08-14-hps-phase-1-2-gap-closure-plan.md": {
+    "type": "plan",
+    "file": "2026-08-14-hps-phase-1-2-gap-closure-plan.md",
+    "feature": "HPS Phase 1 2 Gap Closure Plan",
+    "updatedAt": "2026-08-14T06:59:42.025Z"
   }
 }
