@@ -32,6 +32,20 @@ Restart OpenCode. The plugin will automatically inject horspowers context via th
 
 You should see horspowers is active when you ask "do you have horspowers?"
 
+### Optional HPS MCP sidecar (project-local)
+
+If native discovery provides the Horspowers installation root, generate a
+project-local registration without changing user-global configuration:
+
+```bash
+node <installation-root>/scripts/install-hps-mcp.mjs \
+  --host opencode --installation-root <installation-root> \
+  --output .opencode/hps.mcp.json
+```
+
+The generated command is `<installation-root>/bin/hps serve --stdio`. Do not
+replace it with a guessed path or a global config edit.
+
 ## Usage
 
 ### Finding Skills

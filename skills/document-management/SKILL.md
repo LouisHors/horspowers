@@ -11,7 +11,7 @@ description: "You MUST use this when the user wants project documentation initia
 
 ## 统一入口
 
-先阅读 `horspowers:using-horspowers/references/document-runtime.md`。所有请求使用 JSON stdin 调用 `resolve`、`get`、`search`、`create`、`update`、`archive`、`restore`、`config-change` 或 `record-session`。不得用配置标记、目录存在性或文件路径决定 backend。
+先阅读 `horspowers:using-horspowers/references/document-runtime.md`。确定性边界优先使用 HPS `task_prepare` 与已注册的 document MCP tools；无 MCP 时用安装根下的 `hps call` JSON stdin。HPS 不可发现或协议错误时，才用 `document-runtime-cli.mjs` 兼容 wrapper。所有请求仍必须经过统一 runtime 的 `resolve`、`get`、`search`、`create`、`update`、`archive`、`restore`、`config-change` 或 `record-session`，不得用配置标记、目录存在性或文件路径决定 backend。
 
 先 `resolve`：
 
@@ -31,6 +31,8 @@ description: "You MUST use this when the user wants project documentation initia
 | 恢复已归档记录 | `restore` |
 | 请求文档配置变更 | `config-change` |
 | 记录会话与关联文档 | `record-session` |
+
+调用顺序：MCP 会话先 `task_prepare`，再使用同一 `scope_id` 调 document read；`hps call` 只把单次 operation 的结果作为当前轮事实，不跨进程复用 scope。若 task_prepare 返回 `scope_expired`，重新 prepare；不让旧 wrapper 直接绕过 scope 或 runtime。
 
 本版本不以直接文件迁移方式处理旧文档。先用 `search`/`get` 收集可复用内容，再把迁移需求作为受审阅的 `create`、`update` 或 `config-change` 请求；外置迁移协议未设计时明确阻断，而不是猜测目标位置。
 

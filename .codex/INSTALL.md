@@ -38,6 +38,20 @@ ls -la ~/.agents/skills/horspowers
 You should see a symlink or junction pointing to your cloned Horspowers
 repository.
 
+## Optional HPS MCP sidecar (project-local)
+
+Use the native-discovered installation root and generate a config file in the
+current project. This command does not modify Codex global configuration:
+
+```bash
+node <installation-root>/scripts/install-hps-mcp.mjs \
+  --host codex --installation-root <installation-root> \
+  --output ./codex.hps.mcp.json
+```
+
+The generated entry executes `<installation-root>/bin/hps serve --stdio`.
+Review and merge it into the project-level MCP configuration manually.
+
 ## Migrating from the old bootstrap flow
 
 If you previously installed Horspowers through `AGENTS.md` and the bootstrap

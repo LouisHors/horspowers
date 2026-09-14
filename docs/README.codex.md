@@ -72,6 +72,29 @@ content.
 
 ## Usage
 
+### Agent-first HPS CLI
+
+安装后可通过短命令 `hps` 调用共享执行面。若 PATH 中没有该命令，Codex 必须从 native skill discovery 取得 horspowers 安装根，再直接执行 `<installation-root>/bin/hps`；不要按仓库名扫描目录。
+
+```bash
+hps version --json
+printf '%s' '{"schema_version":1,"request_id":"r1","operation":"task_prepare","cwd":"/abs/project","input":{"message":"设计这个功能","host":"codex"}}' | hps call
+```
+
+支持 MCP 宿主时，优先启动会话级 stdio sidecar：`hps serve --stdio`。stdout 只输出结构化协议响应；Sidecar 继承宿主沙盒、网络、审批和 writable roots，不提供删除、任意 Shell、HTTP 或持久磁盘缓存。
+
+### 注册 HPS MCP（不修改全局配置）
+
+宿主安装层应把 native skill discovery 返回的安装根传给仓库内生成器；生成器只打印配置，或写入用户明确指定的项目文件，不会猜测路径、扫描用户目录或修改全局配置：
+
+```bash
+node <installation-root>/scripts/install-hps-mcp.mjs \
+  --host codex --installation-root <installation-root> \
+  --output ./codex.hps.mcp.json
+```
+
+模板位于 `templates/mcp/`。所有宿主都直接执行 `<installation-root>/bin/hps serve --stdio`；`templates/mcp/claude.mcp.json` 是 Claude `.mcp.json` 的示例，Codex/OpenCode 分别使用 `codex.json` 与 `opencode.json`。将生成结果人工合并到宿主的项目级配置即可。
+
 Once installed, Codex can discover and use the skills directly. Typical usage
 patterns:
 

@@ -27,7 +27,9 @@ description: "You MUST use this before any creative work - creating features, bu
 
 先阅读 `horspowers:using-horspowers/references/document-runtime.md` 并严格遵守其安装根解析、JSON stdin 和结果处理契约。不得根据项目中的配置标记或目录是否存在选择文档后端，也不得直接读写文档路径。
 
-在第一个澄清问题前，先调用 `resolve`，再调用安装目录中的 `collect-context.mjs` 一次。输入必须经宿主结构化 JSON stdin 传入，不能把用户原文插进命令字符串；收集器只负责仓库、Git 历史和入口文件等非文档背景，任一分支失败都不阻止其他只读分支。
+在第一个澄清问题前，优先通过宿主已发现的 HPS MCP `task_prepare` 一次取得 route、项目事实和按 policy 需要的背景；无 MCP 时使用安装根下的 `hps call` JSON stdin。HPS 不可发现或返回协议错误时，才调用安装目录中的 `collect-context.mjs` 兼容 wrapper 一次。输入必须经宿主结构化 JSON stdin 传入，不能把用户原文插进命令字符串；收集器只负责仓库、Git 历史和入口文件等非文档背景，任一分支失败都不阻止其他只读分支。
+
+优先复用 `task_prepare` 返回的 `routing`、`context` 和 `collected`；不要在同一请求中同时执行 HPS 与旧 collector。只有兼容 fallback 被明确触发时才使用旧 wrapper。
 
 1. 收集器会内部调用统一运行时的 `resolve`；只有其自身确认 `identity_status === "external"` 时，才可全局检索个人 Wiki 历史。项目工作流文档仍必须通过 runtime 的 `search` / `get` 读取。
 2. `company`、`ambiguous_company_remote`、`none` 及缺失或未知状态一律禁止直接 `qmd search/query` 和本地 Wiki grep；调用方不能用输入字段要求例外。只有 runtime 为 `ready` 时才由 runtime 的 `search` / `get` 获取受 manifest 与 root 范围约束的 context、design 和 plan 正文。非 `ready` 时保留设计在当前会话并明确“未持久化”，绝不创建本地替代文档。检索结果只是候选证据：明确区分**仓库事实**、**Wiki 历史**、用户确认事实和**Agent 推断**。若 Wiki 与仓库不一致，展示两者来源并请用户确认基线。

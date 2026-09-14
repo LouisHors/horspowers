@@ -4,6 +4,22 @@ Complete guide for using Superpowers with [OpenCode.ai](https://opencode.ai).
 
 ## Quick Install
 
+### HPS Agent 入口
+
+OpenCode 可将 `hps serve --stdio` 配置为 MCP sidecar；无 MCP 时使用 `hps call` JSON stdin/stdout 回退入口。PATH 中没有 `hps` 时，使用已知插件安装根下的 `<installation-root>/bin/hps`，不要扫描用户目录。两者共享同一 Core，并继承宿主沙盒权限。当前公开工具限于只读能力、内存状态和无副作用 preview；bootstrap 与文档 submit/transition 尚不注册。
+
+### 注册 HPS MCP（项目级、无全局写入）
+
+从 native plugin discovery 获取安装根后，可用仓库内生成器打印 OpenCode 配置：
+
+```bash
+node <installation-root>/scripts/install-hps-mcp.mjs \
+  --host opencode --installation-root <installation-root> \
+  --output .opencode/hps.mcp.json
+```
+
+输出使用 `<installation-root>/bin/hps serve --stdio`，不会扫描用户目录或静默修改全局 OpenCode 配置。参见 `templates/mcp/opencode.json`；请人工把生成的 `mcp.hps` 条目合并到项目配置。
+
 Tell OpenCode:
 
 ```
