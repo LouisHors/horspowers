@@ -26,6 +26,7 @@ description: Use at the entry to a substantive Horspowers workflow so the local 
 ```
 
 - 必须由宿主的结构化输入或安全环境变量生成 JSON。
+- `host` 取当前宿主：`codex`、`claude` 或 `pi`。
 - 不得把用户原文拼接到 shell command、argv 或代码字符串。
 - 执行前验证脚本是普通可读文件并解析真实路径；详细路径见 `references/host-path-resolution.md`。
 
@@ -65,7 +66,7 @@ HPS 的确定性能力有两种接线，**能力相同，差别只在状态能�
 4. `uncertain`：只在 `candidates` 中比较；仍无法消歧时只问一个关键问题。
 5. HPS CLI/MCP non-zero：不假设配置或初始化已经成功；先报告 HPS 不可用，再按旧 router 兼容入口做一次安全 fallback，且不执行额外写入。旧 fallback 的输出仍必须经过原有 blocked/uncertain 语义检查。
 
-`mutations` 只报告 AGENTS 托管区块、项目配置和通用 docs 的状态。路由脚本在任何 Apply 前完成规则评分；Plan 失败或规则无效时返回 `uncertain` 且 `mutations` 为空。
+`task_prepare` 的 `result` 只报告 `routing`、`project`、`collected`、`scope` 与 `capabilities`；普通项目的变更状态读 `project.config_action` 与 `project.docs_action`。`mutations` 不是 `task_prepare` 的字段：它只出现在 legacy `route-request.mjs` 兼容入口的返回里，报告 AGENTS 托管区块、项目配置和通用 docs 三项状态。路由脚本在任何 Apply 前完成规则评分；Plan 失败或规则无效时返回 `uncertain` 且不产生任何变更。
 
 ## 项目配置与文档
 

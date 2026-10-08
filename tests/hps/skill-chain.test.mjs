@@ -9,6 +9,23 @@ async function skill(name) {
   return readFile(path.join(root, 'skills', name, 'SKILL.md'), 'utf8');
 }
 
+test('using-horspowers separates the task_prepare envelope from the legacy router envelope', async () => {
+  const using = await skill('using-horspowers');
+
+  // `mutations` belongs to the legacy route-request envelope. `task_prepare`
+  // reports config/docs state through `project`, so describing `mutations` as a
+  // field of the primary path sends an agent looking for something that is
+  // never returned.
+  assert.match(using, /`project\.config_action`/u);
+  assert.match(using, /`project\.docs_action`/u);
+  assert.match(using, /`mutations` 不是 `task_prepare` 的字段[^。]*legacy/u);
+  assert.doesNotMatch(using, /`mutations` 只报告/u);
+
+  // The stdin contract is host-specific; a fixed `codex` example misleads a
+  // host that must send `claude` or `pi`.
+  assert.match(using, /`host`[^。\n]*`codex`[^。\n]*`claude`[^。\n]*`pi`/u);
+});
+
 test('default workflow skills use HPS for deterministic boundaries and retain safe legacy fallback', async () => {
   const using = await skill('using-horspowers');
   const brainstorm = await skill('brainstorming');
