@@ -1,5 +1,35 @@
 # Horspowers Release Notes
 
+## v4.8.6 (2026-10-08)
+
+### Bug Fixes
+
+**MCP 的"一次 prepare、会话内复用 scope"在真实项目上失效（两个独立缺陷）**
+
+两个缺陷都让 v4.8.x 中 HPS 的核心收益（MCP sidecar 复用 live scope）在真实项目上默默失效，而且都会返回带有误导性的 `scope_expired`（没有任何东西过期）。两者都从 v4.8.5 归入本版发布说明。
+
+- **符号链接路径下 scope 立即失效**：`assertScope` 把请求的 `cwd` 当**字符串**与 `task_prepare` 存入的 **canonical root** 比较。宿主只要给出符号链接形式的路径（macOS 的 `/tmp`、`/var`，Linux 上链接的 checkout、bind mount），刚发出的 scope 就会被拒。现改为比较规范形式（`realpath`），仅在路径无法解析时（如 dry-run 的 `/repo`）保留字面比较。
+- **`project_snapshot` 会删掉刚发出的 scope**：`task_prepare` 仅在 `eligibility === 'project'` 时才验证并合并 validator 结果，却无条件把它装成 provider。普通 git 仓库（尚无 horspowers 配置）拿到 `eligibility: "skipped"`，于是 `git_identity_digest` 与 `config_hash` 被存成 `null` 占位值，首次带 scope 的调用重算出真实值 → 不匹配 → `scope_expired` **并 `invalidateScope` 删除该 scope**，同一会话后续调用全废。而且 `project_context` 与 `project_snapshot` 各用一个 provider（plan 路径 vs 文件系统路径），两者对同一 scope 算出不同事实 —— 因此修法是**同源**：本地项目统一由 validator 验证并绑定。
+- 跨项目隔离不变：用 A 的 scope 配 B 的 `cwd` 仍然 `scope_expired`，不会串数据；重新 `task_prepare` 即可恢复。
+
+### Testing
+
+- 新增 `tests/hps/mcp-live-scope.test.mjs`：**真实 spawn `hps serve --stdio`**，在符号链接目录上验证 prepare 后 `project_snapshot`、`project_context`、`document_resolve`、checkpoint 读写全部复用同一 scope，以及跨项目拒绝与重新 prepare 恢复。约 0.5s，已纳入 `hps-regression`（54/54）。
+- `tests/hps/scope-cache.test.mjs` 新增两条单元测试锁定根因：符号链接拼写必须被接受；未注册本地项目必须绑定其验证器算出的事实。
+- **为什么旧测试抓不到**：所有 scope 测试用 `cwd: '/repo'`（**不存在的路径**，字面比较恒成立且 `realpath` 回落字面比较）；所有 scope 测试用假 plan（`eligibility: 'project'`），从未覆盖真实仓库的 `'skipped'`；且没有任何测试真正 spawn sidecar（全是进程内 `server.handle()`，共享同一 runtime 对象）。
+
+### Tooling
+
+- 新增 `scripts/audit-hps-simulated-flows.mjs`：57 项模拟调用审计（一次性 CLI、MCP 会话、live scope 复用、跨项目隔离、CLI/MCP 等价性、capability fail-closed、兼容入口、路由语义）。开发工具，非回归闸门。
+  - 它发现两个缺陷前后的对照：未修复的 4.8.4 上 **44 pass / 10 warn / 3 fail**，本版 **57 pass / 0 warn / 0 fail**。
+
+### Compatibility and Rollback
+
+- 无协议、operation 注册表或权限边界变更；仅放宽 scope 校验中的路径拼写比较与事实绑定范围，跨项目仍 fail closed。
+- 回滚可 revert 本版提交（scope 修复在 v4.8.5 中已合入主线，本版只是补齐发布说明与工具）。
+
+---
+
 ## v4.8.5 (2026-10-08)
 
 ### Bug Fixes
