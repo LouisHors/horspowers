@@ -336,3 +336,21 @@ test('task_prepare returns the fields the skill names and never returns mutation
     await rm(cwd, { recursive: true, force: true });
   }
 });
+
+test('the skill handles the fail-closed project class instead of a legacy gate field', async () => {
+  const skillText = await readFile(skillPath, 'utf8');
+
+  // `blocked_by` has exactly one producer and it only runs for a caller that
+  // declares an older external-document-runtime version; current callers pass
+  // the current one, so the field never appears. The live signal for a project
+  // that must not receive local config or docs is the project class.
+  const gateProducer = await readFile(path.join(repoRoot, 'lib/workflow-router.mjs'), 'utf8');
+  assert.match(gateProducer, /externalDocumentRuntimeVersion >= 1/u, 'the gate must stay a below-v1 compatibility path');
+  const runtimeVersion = await readFile(path.join(repoRoot, 'lib/document-runtime-capabilities.mjs'), 'utf8');
+  const declared = Number(/EXTERNAL_DOCUMENT_RUNTIME_VERSION = (\d+)/u.exec(runtimeVersion)?.[1]);
+  assert.ok(declared >= 1, `the current external runtime version must be at least 1, got ${declared}`);
+
+  assert.match(skillText, /`external_required`/u, 'the skill must name the live fail-closed signal');
+  assert.match(skillText, /`external_project`/u, 'the skill must name the project class that fails closed');
+  assert.match(skillText, /`blocked_by`[^。\n]*兼容/u, 'blocked_by must be described as a compatibility field');
+});
