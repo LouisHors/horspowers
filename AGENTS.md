@@ -48,6 +48,7 @@ node scripts/run-hps-native-host-probe.mjs --host pi \
 - `tests/.artifacts/` 里保留的 fixture 由 `tests/helpers/retained-artifacts.mjs` 限量（默认保留最新 40 个、且只删 60 秒前的）：套件在 `before` 里自行清理，shell 套件调用同名 CLI。
 - 目录名是**全小写**：`tests/codex/`、`tests/claude-code/`、`tests/opencode/`。（历史上文档里写过 `tests/Codex/`，在 Linux 上会失败。）
 - 不要直接调 GNU `timeout`：仓库用 `scripts/portable-timeout.sh`（Node helper），macOS/Linux 都可用。
+- 改动 scope 生命周期、协议或宿主接线后，可重跑模拟调用审计：`node scripts/audit-hps-simulated-flows.mjs`（57 项：一次性 CLI、MCP 会话、live scope 复用、跨项目隔离、CLI/MCP 等价性、capability fail-closed、兼容入口、路由语义）。它是开发工具而非回归闸门 —— 它发现的不变式已由 `tests/hps/mcp-live-scope.test.mjs` 与 `tests/hps/scope-cache.test.mjs` 锁住。
 - `hps` 暴露固定 verification profile（`hps-unit`、`hps-regression`、`context-collector`），但 `verification_run` **必需 `scope_id`**，只能在 MCP 会话内调用；一次性 CLI 请直接用上面的 `node --test` 命令。
 
 ## HPS 架构
