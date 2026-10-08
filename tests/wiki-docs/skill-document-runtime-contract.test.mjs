@@ -80,8 +80,15 @@ const hpsRegistrationMutationInventory = new Map([
 // an OS temporary directory. It never targets project documentation or user
 // configuration, so keep this diagnostic surface explicitly reviewed.
 const hpsProbeMutationInventory = new Map([
+  // Every mutation targets the probe's own mkdtemp artifact directory:
+  // `mkdtemp` creates it, `mkdir` creates the isolated pi agent directory
+  // inside it, `symlink` borrows the operator's pi credentials without
+  // copying the secret, and `writeFile` writes the MCP config, step artifacts
+  // and the report. No user-level configuration is written.
   ['lib/hps-native-host-probe.mjs', new Set([
     'node-fs-mutation:mkdtemp',
+    'node-fs-mutation:mkdir',
+    'node-fs-mutation:symlink',
     'node-fs-mutation:writeFile'
   ])]
 ]);

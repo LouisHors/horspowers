@@ -14,7 +14,7 @@ const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..')
 const execFileAsync = promisify(execFile);
 
 test('MCP registration renders native installation root for all supported hosts', () => {
-  assert.deepEqual(SUPPORTED_HOSTS, ['claude', 'codex', 'opencode']);
+  assert.deepEqual(SUPPORTED_HOSTS, ['claude', 'codex', 'opencode', 'pi']);
   const installRoot = '/native/plugin/horspowers';
 
   const claude = renderMcpRegistration('claude', installRoot);
@@ -27,6 +27,10 @@ test('MCP registration renders native installation root for all supported hosts'
 
   const opencode = renderMcpRegistration('opencode', installRoot);
   assert.deepEqual(opencode.mcp.hps.command, [`${installRoot}/bin/hps`, 'serve', '--stdio']);
+
+  const pi = renderMcpRegistration('pi', installRoot);
+  assert.equal(pi.mcpServers.hps.command, `${installRoot}/bin/hps`);
+  assert.deepEqual(pi.mcpServers.hps.args, ['serve', '--stdio']);
 });
 
 test('registration rejects guessed or non-absolute installation roots', () => {

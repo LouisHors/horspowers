@@ -5,7 +5,8 @@ import {
   adaptHostCapabilities,
   createClaudeCapabilityAdapter,
   createCodexCapabilityAdapter,
-  createOpenCodeCapabilityAdapter
+  createOpenCodeCapabilityAdapter,
+  createPiCapabilityAdapter
 } from '../../lib/hps-capabilities.mjs';
 import { HpsRuntime } from '../../lib/hps-runtime.mjs';
 
@@ -23,11 +24,12 @@ function facts(host, capabilities = all) {
   return { host, verified: true, source: 'fixture', capabilities };
 }
 
-test('three host adapters accept verified matching fixtures and preserve explicit false', () => {
+test('four host adapters accept verified matching fixtures and preserve explicit false', () => {
   for (const [host, factory] of Object.entries({
     codex: createCodexCapabilityAdapter,
     claude: createClaudeCapabilityAdapter,
-    opencode: createOpenCodeCapabilityAdapter
+    opencode: createOpenCodeCapabilityAdapter,
+    pi: createPiCapabilityAdapter
   })) {
     const adapter = factory({ facts: facts(host, { ...all, workspace_write: false }) });
     assert.equal(adapter.host, host);
@@ -39,7 +41,7 @@ test('three host adapters accept verified matching fixtures and preserve explici
 });
 
 test('missing, unverified, mismatched, and nonboolean facts fail closed', () => {
-  for (const host of ['codex', 'claude', 'opencode']) {
+  for (const host of ['codex', 'claude', 'opencode', 'pi']) {
     for (const input of [
       {},
       { host, verified: false, capabilities: all },
