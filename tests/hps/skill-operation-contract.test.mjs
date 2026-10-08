@@ -1,7 +1,8 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { spawn } from 'node:child_process';
-import { mkdtemp, readFile, rm } from 'node:fs/promises';
+import { existsSync } from 'node:fs';
+import { mkdtemp, readFile, readdir, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -10,7 +11,8 @@ import { HPS_OPERATION_DEFINITIONS, exposedHpsTools } from '../../lib/hps-operat
 import { parseCallRequest } from '../../lib/hps-protocol.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
-const skillPath = path.join(repoRoot, 'skills/using-horspowers/SKILL.md');
+const skillDir = path.join(repoRoot, 'skills/using-horspowers');
+const skillPath = path.join(skillDir, 'SKILL.md');
 const hpsBin = path.join(repoRoot, 'bin', 'hps');
 
 // The skill text and the runtime have drifted twice already: `scope_id` was
@@ -34,6 +36,29 @@ function jsonBlocks(markdown) {
 
 function isCallRequest(value) {
   try { parseCallRequest(value); return true; } catch { return false; }
+}
+
+/**
+ * Inline `code` tokens, ignoring fenced blocks. A fenced block's run of three
+ * backticks would otherwise pair with the wrong delimiters and swallow the
+ * whole block as one token.
+ */
+function inlineCode(markdown) {
+  const withoutFences = markdown.replace(/```[\s\S]*?```/gu, '');
+  return [...withoutFences.matchAll(/`([^`]+)`/gu)].map((match) => match[1]);
+}
+
+/**
+ * Paths the skill tells an agent to open: `references/*.md` relative to the
+ * skill directory, and bare script basenames such as `collect-context.mjs`.
+ */
+function referencedSkillPaths(skillText) {
+  const references = new Set();
+  for (const token of inlineCode(skillText)) {
+    if (/^references\/[A-Za-z0-9._-]+\.md$/u.test(token)) references.add(token);
+    else if (/^[a-z0-9_-]+\.mjs$/u.test(token)) references.add(token);
+  }
+  return [...references].sort();
 }
 
 function expandGlob(name) {
@@ -69,9 +94,10 @@ function operationListsFromRegistry() {
  * Return human-readable contract violations instead of throwing, so the
  * checker itself can be exercised against the wording that shipped before.
  * @param {string} skillText
+ * @param {{fileExists?: (reference: string) => boolean}} [options]
  * @returns {string[]}
  */
-export function validateSkillContract(skillText) {
+export function validateSkillContract(skillText, { fileExists = null } = {}) {
   const violations = [];
   const fromSkill = operationListsFromSkill(skillText);
   const fromRegistry = operationListsFromRegistry();
@@ -98,7 +124,28 @@ export function validateSkillContract(skillText) {
   if (!jsonBlocks(skillText).some(isCallRequest)) {
     violations.push('skill must show a `hps call` request the CLI accepts: schema_version, request_id, operation, cwd, input');
   }
+  // A renamed or deleted file leaves the skill pointing at nothing.
+  if (typeof fileExists === 'function') {
+    for (const reference of referencedSkillPaths(skillText)) {
+      if (!fileExists(reference)) violations.push(`skill references a path that does not exist: ${reference}`);
+    }
+  }
   return violations;
+}
+
+/** Basenames of every .mjs file under the given roots, for bare script references. */
+async function indexScriptBasenames(roots) {
+  const index = new Set();
+  const walk = async (directory) => {
+    for (const entry of await readdir(directory, { withFileTypes: true })) {
+      if (entry.name === 'node_modules' || entry.name.startsWith('.')) continue;
+      const target = path.join(directory, entry.name);
+      if (entry.isDirectory()) await walk(target);
+      else if (entry.name.endsWith('.mjs')) index.add(entry.name);
+    }
+  };
+  for (const root of roots) await walk(root);
+  return index;
 }
 
 function runHpsCall(request) {
@@ -129,6 +176,18 @@ function envelopeFrom(stdout) {
 test('the skill operation lists match the HPS operation registry', async () => {
   const skillText = await readFile(skillPath, 'utf8');
   assert.deepEqual(validateSkillContract(skillText), []);
+});
+
+test('the skill only points at references and scripts that exist', async () => {
+  const skillText = await readFile(skillPath, 'utf8');
+  const scripts = await indexScriptBasenames([path.join(repoRoot, 'lib'), path.join(repoRoot, 'skills')]);
+  const fileExists = (reference) => (reference.startsWith('references/')
+    ? existsSync(path.join(skillDir, reference))
+    : scripts.has(reference));
+
+  const references = referencedSkillPaths(skillText);
+  assert.ok(references.length >= 3, `expected the skill to reference its files, found ${JSON.stringify(references)}`);
+  assert.deepEqual(validateSkillContract(skillText, { fileExists }), []);
 });
 
 test('the contract checker rejects both kinds of drift', () => {
@@ -176,6 +235,15 @@ test('the contract checker rejects both kinds of drift', () => {
     validateSkillContract(flatOnly).some((violation) => violation.includes('`hps call` request')),
     'checker must reject a flat route-request payload presented as an hps call request'
   );
+
+  // A reference to a file that does not exist.
+  const staleReference = `${render(registry.free, registry.scoped)}\n见 \`references/does-not-exist.md\`。\n`;
+  assert.ok(
+    validateSkillContract(staleReference, { fileExists: () => false })
+      .some((violation) => violation.includes('does not exist')),
+    'checker must reject a reference to a missing file'
+  );
+  assert.deepEqual(validateSkillContract(staleReference, { fileExists: () => true }), []);
 
   // The lists must survive; dropping them is not a way to pass.
   assert.deepEqual(validateSkillContract('## 执行通道\n无列表\n'), [

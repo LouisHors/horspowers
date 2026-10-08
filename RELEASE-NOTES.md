@@ -1,5 +1,27 @@
 # Horspowers Release Notes
 
+## v4.8.4 (2026-10-08)
+
+### Testing
+
+**技能契约测试新增第四个维度：引用的文件必须存在**
+- 提取技能里的内联 `code` token，把 `references/*.md`（相对技能目录）与裸脚本名（在 `lib/`、`skills/` 下索引 basename）逐个验证存在性。文件被改名或删除时，技能里的引用会静默失效 —— 这类漂移此前只能靠人查。
+- 校验器新增可注入的 `fileExists` 断言，使它与文件系统解耦，可以用合成文档测试。
+- 反向验证：合成文档引用一个不存在的文件会报 ``skill references a path that does not exist``；实际变异（把技能里的 `references/config-bootstrap.md` 改名）会让实时测试失败并给出精确路径，恢复后 4/4。
+
+**修正提取方式的一个真陷阱**：直接用 `` `([^`]+)` `` 提取内联代码会与**代码围栏的连续反引号错配**，把整个 fenced 块吞成一个 token。新的提取先剔除围栏块再取内联 token。（这个问题使首次提取结果为 0 个引用 —— 即一个静默的假阴性。）另外测试文件新增 `skillDir`，引用解析以技能目录为基准。
+
+### 累计四个维度
+
+`tests/hps/skill-operation-contract.test.mjs` 现在锁住：操作清单 vs 注册表、`task_prepare` 结果字段 vs 真实 envelope、请求形状 vs `parseCallRequest`、引用路径 vs 文件系统。四次漂移（`scope_id`、`mutations`、扁平 stdin 形状、即将发生的引用失效）均属同一家族，已全部纳入自动检测。
+
+### Compatibility and Rollback
+
+- 仅测试变更，无技能文本、CLI、协议变更。
+- 回滚可直接 revert 本版提交。
+
+---
+
 ## v4.8.3 (2026-10-08)
 
 ### Bug Fixes

@@ -28,7 +28,7 @@ Pi differs from Codex and Claude Code in one important way: it has no plugin man
    Then pick one of two update strategies:
 
    ```bash
-   git checkout v4.8.3                       # pinned release (reproducible)
+   git checkout v4.8.4                       # pinned release (reproducible)
    # or
    git switch main && git pull --ff-only     # track the latest merged work
    ```
