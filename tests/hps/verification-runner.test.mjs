@@ -5,7 +5,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { HpsRuntime } from '../../lib/hps-runtime.mjs';
-import { createVerificationRunner } from '../../lib/hps-verification.mjs';
+import { createVerificationRunner, VERIFICATION_PROFILES } from '../../lib/hps-verification.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const fixture = path.join(repoRoot, 'tests/hps/fixtures/verification-runner-fixture.mjs');
@@ -20,6 +20,18 @@ function profiles() {
     network: Object.freeze({ id: 'network', program: process.execPath, args: Object.freeze([fixture, 'pass']), timeout_ms: 1_000, network: true })
   });
 }
+
+test('hps-unit covers the skill contract suite', () => {
+  // The MCP `verification_run` path can only reach the allowlisted profiles, so
+  // a suite that is missing here is invisible to a session that verifies itself
+  // through the sidecar.
+  const unit = VERIFICATION_PROFILES['hps-unit'];
+  assert.equal(unit.id, 'hps-unit');
+  assert.ok(
+    unit.args.some((arg) => arg.endsWith('tests/hps/skill-operation-contract.test.mjs')),
+    'hps-unit must run the suite that pins the skill text to the operation registry and a real envelope'
+  );
+});
 
 test('default runtime executes the installed hps-unit profile without an injected runner', async () => {
   const runtime = new HpsRuntime({ capabilities: { local_process: true, external_network: false } });

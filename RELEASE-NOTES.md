@@ -1,5 +1,40 @@
 # Horspowers Release Notes
 
+## v4.8.2 (2026-10-08)
+
+### Testing
+
+**技能文本与 runtime 的契约测试（pin 住已漂移两次的字段）**
+- 新增 `tests/hps/skill-operation-contract.test.mjs`：不再重抄文本，而是**从 operation 注册表推导期望值** —— 「无 scope 依赖」与「必需 `scope_id`」两个清单必须等于注册表按 descriptor 的 `required` 划分的集合（`session_*`/`checkpoint_*` 由注册表展开）。
+- 同时跑一次真实 `hps call` 的 `task_prepare` envelope：技能点名的字段（`routing`/`project`/`collected`/`scope`/`capabilities`）必须真实存在，`mutations` 必须**不存在**。
+- 校验器自身用合成文档测过四种情形（正确 → 无违规；历史 `mutations` 措辞 → 违规；清单多出注册表没有的 operation → 违规；清单被删 → 违规），避免「实时文本恰好匹配」造成假通过。
+
+**`hps-unit` verification profile 纳入该套件**
+- profile 从 18 个测试增至 21 个（`protocol` + `runtime` + `skill-operation-contract`）。此前只有全局 `node --test tests/hps/*` 覆盖它，MCP `verification_run(profile="hps-unit")` 看不到。
+- 新增断言要求 `hps-unit` 必须包含该套件，避免日后被静默移除。
+- 实测该 profile 仍为 `status: passed`、`exit_code: 0`、约 231ms、未截断。
+
+### Documentation
+
+- **`AGENTS.md` 重写**：补充 HPS 分工（技能推理 / HPS 执行）、两条执行通道与 scope 边界、宿主矩阵（Codex / Claude Code / Pi / OpenCode 兼容）、capability fail closed、仓库布局与 portable timeout 要求；修正 4 处事实错误（`tests/Codex` 大小写、不存在的根 `plugin.json`、个人技能目录、发明出来的测试调用方式）。
+- **移除 `CLAUDE.md`**：与旧 `AGENTS.md` 归一化后逐行相同（无独有内容），且 Pi 会用同一目录的两份上下文文件重复注入过时指引；Claude Code 2.x 亦发现 `AGENTS.md`（其 bundle 原文：`Claude Code hardcodes CLAUDE.md / AGENTS.md discovery.`）。
+- **归档 5 份 HPS 迁移前的历史文档**到 `docs/archive/`（`docs/tasks/` 随之清空），并修正 `README.md` 的入站链接。
+- `docs/README.pi.md`：安装/更新步骤可验证化（补 tag、pin 与跟随 main 两种策略、`--exposure direct`、`/reload` 生效方式、验证命令），新增开发期跟随工作副本的说明与 symlink 陷阱。
+
+### Bug Fixes
+
+**修正技能里两处"描述错 envelope"的说明**
+- `scope_id` 不跨 `hps call` 进程存活，原文「`hps call`（先 `task_prepare` 取 scope）」无法实现；现按「无 scope 可直接一次性调用」与「必需 `scope_id`」分流，落入受控兼容入口。
+- `mutations` 不是 `task_prepare` 的字段（它只由 legacy `route-request.mjs` 产生）；主路径改指 `project.config_action` / `project.docs_action`。
+
+### Compatibility and Rollback
+
+- 除 verification profile 的文件列表外，无运行时代码变更；无技能契约、协议或安全边界变更。
+- 未删除文件（除重复的 `CLAUDE.md`），未修改用户级配置；文档移动均可用 revert 恢复。
+- `docs/archive/` 内文档的内部链接与历史遗留断链未改写。
+
+---
+
 ## v4.8.1 (2026-10-08)
 
 ### Documentation and Skill Contracts
