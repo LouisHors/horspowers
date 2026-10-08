@@ -9,6 +9,10 @@ description: "You MUST use this when the user wants an existing implementation p
 
 **开始时声明：**“我正在使用执行计划技能来实施这个计划。” 首次回复只说明将分批执行，若计划或检查点不明确最多问一个问题；在此之前不要加载文档、建 tracker 或开始任务。
 
+## 隔离环境
+
+开始执行前先确认工作区：若当前不在隔离工作区且本次改动需要隔离，先调用 `horspowers:using-git-worktrees`（它会先检测已有隔离，不会重复创建）。
+
 ## Step 0：通过运行时加载完整上下文
 
 先阅读 `horspowers:using-horspowers/references/document-runtime.md`。只用该参考中的 JSON stdin 调用 `resolve`、`search` 和 `get`；不要根据配置文件、目录或 shell 路径猜测 backend。

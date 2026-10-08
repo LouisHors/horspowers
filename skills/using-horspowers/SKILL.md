@@ -102,4 +102,4 @@ HPS 的确定性能力有两种接线，**能力相同，差别只在状态能�
 
 Codex 使用 native skill discovery、`update_plan` 和本机工具。Claude 专用工具名称的映射在 `references/codex-tools.md`；路径解析在 `references/host-path-resolution.md`。
 
-Pi 使用 `read`/`bash` 等本机工具与 `mcp__hps__*`（当 `hps serve --stdio` 已注册时）。向路由器传 `"host": "pi"`；Pi 无 SessionStart hook，会话级说明由项目/用户 `AGENTS.md` 提供，不由本 Skill 写入。
+Pi 使用 `read`/`bash` 等本机工具与 `mcp__hps__*`（当 `hps serve --stdio` 已注册时）；Claude 工具名到 Pi 的映射（`Task`→`subagent`、`TodoWrite`→`todo` 等）在 `references/pi-tools.md`。向路由器传 `"host": "pi"`；Pi 无 SessionStart hook，会话级说明由项目/用户 `AGENTS.md` 提供，不由本 Skill 写入。

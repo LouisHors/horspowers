@@ -7,7 +7,7 @@ Use this template when dispatching a code quality reviewer subagent.
 **Only dispatch after spec compliance review passes.**
 
 ```
-Task tool (horspowers:code-reviewer):
+子代理工具（Claude `Task` / Codex `spawn_agent` / Pi `subagent`；`horspowers:code-reviewer`）：
   Use template at requesting-code-review/code-reviewer.md
 
   WHAT_WAS_IMPLEMENTED: [from implementer's report]

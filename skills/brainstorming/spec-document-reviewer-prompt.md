@@ -7,7 +7,7 @@ Use this template when reviewing a Horspowers design document resolved through t
 **Use after:** the design was created or updated, then reloaded in full. The reference may be a local runtime path or a Wiki logical ID/URI, but the reviewer must receive the complete document body, not only the reference.
 
 ```text
-Task tool (general-purpose):
+子代理工具（Claude `Task` / Codex `spawn_agent` / Pi `subagent`；general-purpose）：
   description: "Review complete design document"
   prompt: |
     You are a design document reviewer for the Horspowers document runtime.

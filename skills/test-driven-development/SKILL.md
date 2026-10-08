@@ -37,6 +37,8 @@ Wiki backend 的 bug 采用 safe-document：受影响测试和代码进入 `file
 
 ## 完成前检查
 
+声明完成前按 `horspowers:verification-before-completion` 执行：先跑验证命令并确认输出，再作结论。
+
 - 每个新增行为均有先失败的测试。
 - 每次失败都因预期缺失而非测试错误。
 - 所有目标与受影响回归测试通过，输出没有未解释的警告。
