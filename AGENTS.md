@@ -25,7 +25,8 @@ Always respond in *Simplified Chinese/中文*
 node --test tests/context-collector/*.test.mjs \
           tests/wiki-docs/*.test.mjs \
           tests/workflow-router/*.test.mjs \
-          tests/hps/*.test.mjs
+          tests/hps/*.test.mjs \
+          tests/helpers/*.test.mjs
 
 # 单套件
 node --test tests/hps/*.test.mjs
@@ -44,6 +45,7 @@ node scripts/run-hps-native-host-probe.mjs --host pi \
 ```
 
 - **测试必须从仓库根目录运行**，不要从临时目录运行。集成测试会创建真实项目并执行完整工作流。
+- `tests/.artifacts/` 里保留的 fixture 由 `tests/helpers/retained-artifacts.mjs` 限量（默认保留最新 40 个、且只删 60 秒前的）：套件在 `before` 里自行清理，shell 套件调用同名 CLI。
 - 目录名是**全小写**：`tests/codex/`、`tests/claude-code/`、`tests/opencode/`。（历史上文档里写过 `tests/Codex/`，在 Linux 上会失败。）
 - 不要直接调 GNU `timeout`：仓库用 `scripts/portable-timeout.sh`（Node helper），macOS/Linux 都可用。
 - `hps` 暴露固定 verification profile（`hps-unit`、`hps-regression`、`context-collector`），但 `verification_run` **必需 `scope_id`**，只能在 MCP 会话内调用；一次性 CLI 请直接用上面的 `node --test` 命令。
