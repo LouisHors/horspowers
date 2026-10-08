@@ -49,10 +49,10 @@ description: Use at the entry to a substantive Horspowers workflow so the local 
 - 执行前验证脚本是普通可读文件并解析真实路径；详细路径见 `references/host-path-resolution.md`。
 - 把扁平对象喂给 `hps call`（或反之）只会得到 `invalid_request`；那不是 HPS 不可用，不得据此降级到兼容入口。
 
-Codex macOS/Linux 的 HPS 安全管道示例（`HPS_REQUEST` 是上面的 canonical envelope）：
+Codex macOS/Linux 的 HPS 安全管道示例（`HPS_CALL_REQUEST` 是上面的 canonical envelope）：
 
 ```bash
-printf '%s' "$HPS_REQUEST" | \
+printf '%s' "$HPS_CALL_REQUEST" | \
   "$HPS_INSTALL_ROOT/bin/hps" call
 ```
 
@@ -83,7 +83,12 @@ HPS 的确定性能力有两种接线，**能力相同，差别只在状态能�
 2. `target_skill` 非空：立即加载这个唯一 Skill，不再进行泛化 Skill 判断。
 3. `direct`：直接处理请求，不调用 qmd 或流程 Skill；HPS 只做无上下文 route，Skill 直接响应。
 4. `uncertain`：只在 `candidates` 中比较；仍无法消歧时只问一个关键问题。
-5. HPS CLI/MCP non-zero：不假设配置或初始化已经成功；先报告 HPS 不可用，再按旧 router 兼容入口做一次安全 fallback，且不执行额外写入。旧 fallback 的输出仍必须经过原有 blocked/uncertain 语义检查。
+5. HPS 返回 non-zero 时**先按错误码分类**，不要一律当成 HPS 不可用：
+   - `invalid_request`：调用方形状或字段错误。修正 `hps call` envelope 后重试，不得降级。
+   - `operation_unavailable` / `operation_not_found`：该 operation 尚未公开或不存在。按「执行通道」走对应的受控入口，不得据此推断 HPS 不可用。
+   - `scope_expired`：scope 已失效。在 MCP 会话内重新 `task_prepare`，或用一次性 `hps call` 重做本次 operation。
+   - 只有 HPS 不可发现、协议不可用，或 HPS 明确报告初始化回退时，才按旧 router 兼容入口做一次安全 fallback，且不执行额外写入。
+   旧 fallback 的输出仍必须经过原有 blocked/uncertain 语义检查。
 
 `task_prepare` 的 `result` 只报告 `routing`、`project`、`collected`、`scope` 与 `capabilities`；普通项目的变更状态读 `project.config_action` 与 `project.docs_action`。`mutations` 不是 `task_prepare` 的字段：它只出现在 legacy `route-request.mjs` 兼容入口的返回里，报告 AGENTS 托管区块、项目配置和通用 docs 三项状态。路由脚本在任何 Apply 前完成规则评分；Plan 失败或规则无效时返回 `uncertain` 且不产生任何变更。
 
