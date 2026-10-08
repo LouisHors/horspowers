@@ -93,6 +93,18 @@ const hpsProbeMutationInventory = new Map([
   ])]
 ]);
 
+// The simulated-flow audit creates throwaway fixture projects under the OS
+// temp directory: `mkdtemp` makes each one, `writeFile` seeds a README and
+// `rm` removes the set afterwards. Nothing in the repository or the user's
+// home is written, and the script is a development tool rather than a gate.
+const hpsAuditToolMutationInventory = new Map([
+  ['scripts/audit-hps-simulated-flows.mjs', new Set([
+    'node-fs-mutation:mkdtemp',
+    'node-fs-mutation:writeFile',
+    'node-fs-mutation:rm'
+  ])]
+]);
+
 const runtimeTextExtensions = new Set([
   '.bash', '.c', '.cc', '.cjs', '.cmd', '.coffee', '.cpp', '.cs', '.fish',
   '.go', '.h', '.java', '.js', '.json', '.jsx', '.lua', '.mjs', '.php',
@@ -1000,6 +1012,12 @@ test('repository audit rejects direct document operations outside the exact allo
     const hpsProbeInventory = hpsProbeMutationInventory.get(rel);
     if (hpsProbeInventory) {
       assert.deepEqual(new Set(operationIds), hpsProbeInventory, `${rel} must retain its bounded probe artifact writes`);
+      continue;
+    }
+
+    const hpsAuditToolInventory = hpsAuditToolMutationInventory.get(rel);
+    if (hpsAuditToolInventory) {
+      assert.deepEqual(new Set(operationIds), hpsAuditToolInventory, `${rel} must retain its bounded temp-fixture writes`);
       continue;
     }
 
