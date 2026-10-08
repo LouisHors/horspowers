@@ -14,6 +14,10 @@ const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../
 const scriptPath = path.join(repoRoot, 'skills/using-horspowers/scripts/route-request.mjs');
 const shellMarker = '/private/tmp/horspowers-route-request-shell-marker';
 const artifactsRoot = path.join(repoRoot, 'tests/.artifacts/workflow-router');
+
+// Retained fixtures are kept for debugging but must stay bounded.
+import { pruneRetainedArtifacts } from '../helpers/retained-artifacts.mjs';
+before(async () => { await pruneRetainedArtifacts(artifactsRoot); });
 const run = promisify(execFile);
 let fixtureRoot;
 let companyFixtureRoot;

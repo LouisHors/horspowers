@@ -2,12 +2,16 @@ import assert from 'node:assert/strict';
 import { mkdir, readFile, readdir, symlink, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import test from 'node:test';
+import test, { before } from 'node:test';
 
 import { LocalDocsBackend } from '../../lib/document-backends/local-docs-backend.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifactsRoot = path.join(repoRoot, 'tests/.artifacts/wiki-docs');
+
+// Retained fixtures are kept for debugging but must stay bounded.
+import { pruneRetainedArtifacts } from '../helpers/retained-artifacts.mjs';
+before(async () => { await pruneRetainedArtifacts(artifactsRoot); });
 let fixtureSequence = 0;
 
 async function retainedFixture(name) {

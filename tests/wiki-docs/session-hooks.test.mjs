@@ -7,11 +7,15 @@ import { execFile } from 'node:child_process';
 import { promisify } from 'node:util';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import test from 'node:test';
+import test, { before } from 'node:test';
 
 const run = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifactsRoot = path.join(repoRoot, 'tests/.artifacts/wiki-docs');
+
+// Retained fixtures are kept for debugging but must stay bounded.
+import { pruneRetainedArtifacts } from '../helpers/retained-artifacts.mjs';
+before(async () => { await pruneRetainedArtifacts(artifactsRoot); });
 let fixtureSequence = 0;
 
 function localConfig() {

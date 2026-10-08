@@ -6,7 +6,7 @@ import { mkdir, readdir, readFile, writeFile } from 'node:fs/promises';
 import { createRequire } from 'node:module';
 import path from 'node:path';
 import { PassThrough } from 'node:stream';
-import test from 'node:test';
+import test, { before } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 
@@ -23,6 +23,10 @@ const { VersionUpgrader } = require('../../lib/version-upgrade.js');
 const execFileAsync = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifactsRoot = path.join(repoRoot, 'tests/.artifacts/wiki-docs');
+
+// Retained fixtures are kept for debugging but must stay bounded.
+import { pruneRetainedArtifacts } from '../helpers/retained-artifacts.mjs';
+before(async () => { await pruneRetainedArtifacts(artifactsRoot); });
 const COLLECTION = 'fixture-company-wiki';
 const ROOT_URI = `qmd://${COLLECTION}/projects/fixture-project`;
 const REGISTRY_URI = `qmd://${COLLECTION}/projects/horspowers-registry.md`;

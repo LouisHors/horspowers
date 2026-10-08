@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { existsSync } from 'node:fs';
 import { mkdir, readFile, writeFile } from 'node:fs/promises';
@@ -10,6 +10,10 @@ import { applyAgentsBlock, planAgentsBlock } from '../../lib/agents-managed-bloc
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const templatePath = path.join(repoRoot, 'skills/using-horspowers/templates/codex-agents-managed-block.md');
 const artifactsRoot = path.join(repoRoot, 'tests/.artifacts/workflow-router');
+
+// Retained fixtures are kept for debugging but must stay bounded.
+import { pruneRetainedArtifacts } from '../helpers/retained-artifacts.mjs';
+before(async () => { await pruneRetainedArtifacts(artifactsRoot); });
 let fixtureSequence = 0;
 
 async function fakeHome(name) {
