@@ -79,6 +79,22 @@ node ~/.local/share/horspowers/scripts/run-hps-native-host-probe.mjs \
 
 Exit codes: `0` pass, `2` blocked prerequisite (missing CLI or auth), `1` failed.
 
+### Development setup — track your working copy
+
+If you develop Horspowers itself, point both the package and the MCP server at your working checkout instead of a separate install root. Edits then take effect after `/reload`, with no pull or checkout step:
+
+```bash
+pi install /path/to/your/horspowers
+pi mcp add hps --exposure direct -- /path/to/your/horspowers/bin/hps serve --stdio
+```
+
+The reported skill path is then `<checkout>/skills/<skill>/SKILL.md`, so `<skill dir>/../..` is your checkout and `<checkout>/bin/hps` resolves directly — no symlink in the path, nothing to disambiguate.
+
+Two caveats:
+
+- Whatever branch the checkout is on is what Pi loads. Switching to an experimental branch switches the skills and the MCP sidecar with it.
+- Do not also expose the same skills through `~/.agents/skills/`. A symlink such as `~/.agents/skills/horspowers -> <checkout>/skills` makes Pi discover every skill twice, under a second and usually confusing path; the "first discovered wins" rule then decides which copy the model sees. Remove such symlinks before switching to a package.
+
 ## How It Works
 
 | Capability | Pi mechanism | Notes |
