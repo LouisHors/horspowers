@@ -1,5 +1,34 @@
 # Horspowers Release Notes
 
+## v4.8.8 (2026-10-08)
+
+### Bug Fixes
+
+**入口技能把 legacy 门控字段当作现役暂停判据，并漏掉真正的现役信号**
+
+- 「处理结果」第 1 条以「`blocked_by` 非空」为暂停判据。实测：`blocked_by` 在整个代码库里**只有一个生产者** —— `applyExternalRuntimeSafetyGate`，而它在 `externalDocumentRuntimeVersion >= 1` 时直接返回。`EXTERNAL_DOCUMENT_RUNTIME_VERSION = 1` 且 `routeRequest` 不传更低值，所以**这条分支对现役调用者永不触发**：第 1 条不可达。
+- 而必须 fail closed 的项目类的真实信号从未被提及。实测 `task_prepare`（无 remote 的本地 git 仓库）：
+
+  ```json
+  {"eligibility":"external_project","config_action":"external_required","docs_action":"skipped","reason":"unregistered_no_remote"}
+  ```
+
+  `blocked_by` 为空，`target_skill` 照常返回 —— agent 没有任何指令告诉它这类项目不得创建本地配置与 `docs/`。
+- 现新增一条：`project.eligibility` 为 `external_project`，或 `config_action`/`config` 为 `external_required` 时不得创建本地配置或 `docs/`，须先确认身份或完成外置配置注册；文档操作在运行时层 fail closed，所以继续普通手工代码操作可以，但不得把结果声称为已持久化。
+- `blocked_by` 的处理保留，但标注为**旧调用方的兼容字段**，不再作为主判据。
+
+### Testing
+
+- `tests/hps/skill-operation-contract.test.mjs` 新增一条：技能必须点名 `external_required` 与 `external_project`，且把 `blocked_by` 描述为兼容字段；同时校验这个前提（`externalDocumentRuntimeVersion >= 1` 的短路、且当前版本 ≥ 1），这样当门控真的变回现役时测试会提示前提已变，而不是默默失效。
+- 先 RED 后 GREEN；全量回归 **488/488**。
+
+### Compatibility and Rollback
+
+- 仅技能文本与测试；无运行时、协议或 CLI 改动。旧调用方仍可能产生 `blocked_by`，其处理逻辑保留。
+- 回滚可直接 revert 本版提交。
+
+---
+
 ## v4.8.7 (2026-10-08)
 
 ### Bug Fixes
