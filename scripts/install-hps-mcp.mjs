@@ -4,7 +4,7 @@ import path from 'node:path';
 import { renderMcpRegistration, SUPPORTED_HOSTS } from '../lib/hps-mcp-registration.mjs';
 
 function usage() {
-  return 'Usage: node scripts/install-hps-mcp.mjs --host <claude|codex|opencode> --installation-root <absolute-root> [--output <file>]';
+  return 'Usage: node scripts/install-hps-mcp.mjs --host <claude|codex|opencode|pi> --installation-root <absolute-root> [--output <file>]';
 }
 
 function parseArgs(argv) {

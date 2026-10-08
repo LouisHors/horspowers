@@ -5,14 +5,14 @@ import { fileURLToPath } from 'node:url';
 import { runNativeHostProbe, SUPPORTED_PROBE_HOSTS } from '../lib/hps-native-host-probe.mjs';
 
 function usage() {
-  return 'Usage: node scripts/run-hps-native-host-probe.mjs --host <codex|claude> --installation-root <absolute-root> [--cwd <absolute-project>] [--timeout-ms <positive-ms>]';
+  return 'Usage: node scripts/run-hps-native-host-probe.mjs --host <codex|claude|pi> --installation-root <absolute-root> [--cwd <absolute-project>] [--timeout-ms <positive-ms>] [--model <provider/model>] [--real-agent-dir <absolute-dir>]';
 }
 
 function parseArgs(argv) {
-  const result = { cwd: process.cwd(), timeoutMs: 30_000 };
+  const result = { cwd: process.cwd(), timeoutMs: 30_000, model: null, real_agent_dir: null };
   for (let index = 0; index < argv.length; index += 1) {
     const key = argv[index];
-    if (!['--host', '--installation-root', '--cwd', '--timeout-ms'].includes(key)) throw new Error(usage());
+    if (!['--host', '--installation-root', '--cwd', '--timeout-ms', '--model', '--real-agent-dir'].includes(key)) throw new Error(usage());
     const value = argv[++index];
     if (!value || value.startsWith('--')) throw new Error(usage());
     if (key === '--timeout-ms') {
@@ -32,7 +32,9 @@ try {
     host: args.host,
     installationRoot: path.resolve(args.installation_root),
     cwd: path.resolve(args.cwd),
-    timeoutMs: args.timeoutMs
+    timeoutMs: args.timeoutMs,
+    model: args.model,
+    realAgentDir: args.real_agent_dir
   });
   process.stdout.write(`${JSON.stringify(report)}\n`);
   process.exitCode = report.status === 'pass' ? 0 : (report.status === 'blocked_prerequisite' ? 2 : 1);
