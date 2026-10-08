@@ -538,7 +538,7 @@ MIT License - see LICENSE file for details
 
 ## Documentation
 
-- [统一文档系统用户指南](docs/tasks/unified-document-system.md) - 完整的文档系统使用说明
+- [统一文档系统用户指南](docs/archive/unified-document-system.md) - 完整的文档系统使用说明
 - [文档格式迁移指南](docs/migration-guide.md) - 旧格式文档迁移步骤
 - [文档系统统一项目总结](docs/active/2026-01-21-doc-system-unification-summary.md) - v4.2.2 更新详情
 
