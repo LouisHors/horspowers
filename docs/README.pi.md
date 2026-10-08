@@ -22,10 +22,18 @@ Pi differs from Codex and Claude Code in one important way: it has no plugin man
 
    ```bash
    git clone https://github.com/LouisHors/horspowers.git ~/.local/share/horspowers
-   cd ~/.local/share/horspowers && git checkout v4.8.0
+   cd ~/.local/share/horspowers
    ```
 
-2. Declare it as a Pi package (local path — Pi loads it without copying, so `git pull` is the update):
+   Then pick one of two update strategies:
+
+   ```bash
+   git checkout v4.8.1                       # pinned release (reproducible)
+   # or
+   git switch main && git pull --ff-only     # track the latest merged work
+   ```
+
+2. Declare it as a Pi package (a local path is loaded without copying, so the checkout — not a separate install step — decides which version Pi loads):
 
    ```bash
    pi install ~/.local/share/horspowers
@@ -36,21 +44,40 @@ Pi differs from Codex and Claude Code in one important way: it has no plugin man
 3. Register the HPS MCP sidecar:
 
    ```bash
-   pi mcp add hps -- ~/.local/share/horspowers/bin/hps serve --stdio
+   pi mcp add hps --exposure direct -- ~/.local/share/horspowers/bin/hps serve --stdio
    pi mcp list
    ```
 
-   `pi mcp list` must show `hps` as `connected` with the 19 `hps` tools. Pi writes user-level servers to `~/.pi/agent/mcp.json`; add `-l` for a project-local `.pi/mcp.json`.
+   Register it in Pi's own `<agent-dir>/mcp.json`, which is where `pi mcp add` writes, rather than in the shared `~/.config/mcp/mcp.json`. `pi mcp list` and the native host probe only read Pi's file, so a shared-only registration makes HPS invisible to both. `--exposure direct` declares the 19 `mcp__hps__*` tools to the model; use `--exposure deferred` if you prefer loading them on demand through tool search. Add `-l` for a project-local `.pi/mcp.json`.
 
-4. Restart Pi, or run `/reload`.
+   `pi mcp list` must show `hps` as `connected` with the 19 `hps` tools.
+
+4. Apply it to a running session with `/reload`, or start a new session. `/reload` re-reads MCP servers and skills; if the package still does not appear, start a new session.
 
 ### Verify
 
 ```bash
-pi mcp list --json
+pi mcp list --json   # hps: state connected, 19 tools
+pi list              # the horspowers package resolves to the installation root
 ```
 
-Expect one `hps` server whose `state` is `connected` and whose `tools` array has 19 entries.
+Skill discovery is easiest to check from a directory that has nothing to do with Horspowers — the skills come from the user-level package, not from project context:
+
+```bash
+cd /tmp && pi --no-session --approve --print "List every horspowers skill you can see. Comma-separated, or NONE."
+```
+
+For the full gate, including a real agent tool call:
+
+```bash
+node ~/.local/share/horspowers/scripts/run-hps-native-host-probe.mjs \
+  --host pi \
+  --installation-root ~/.local/share/horspowers \
+  --cwd "$PWD" \
+  --model <provider>/<model>
+```
+
+Exit codes: `0` pass, `2` blocked prerequisite (missing CLI or auth), `1` failed.
 
 ## How It Works
 
@@ -144,12 +171,20 @@ Because Pi does not ask for approval before every tool call, `approval_available
 
 ## Updating
 
+Pinned release:
+
 ```bash
 cd ~/.local/share/horspowers && git fetch --tags && git checkout v<new-version>
 pi update --extensions
 ```
 
-A local-path package has no separate install step, so checking out the new tag is the update. Run `pi mcp list` afterwards.
+Tracking `main`:
+
+```bash
+cd ~/.local/share/horspowers && git pull --ff-only
+```
+
+A local-path package has no separate install step, so whichever revision the checkout is on is what Pi loads. Run `/reload` (or start a new session) and `pi mcp list` afterwards.
 
 ## Troubleshooting
 
@@ -161,9 +196,15 @@ A local-path package has no separate install step, so checking out the new tag i
 
 ### `hps` is missing from `pi mcp list`
 
-- Confirm `<installation root>/bin/hps` exists and is executable; the release must be v4.8.0 or later.
+- Confirm `<installation root>/bin/hps` exists and is executable; the release must be v4.8.1 or later.
 - Confirm `pi mcp list` shows the server and read the reported stderr tail. Check `~/.pi/agent/mcp.log`.
+- Confirm the server is registered in Pi's own `<agent-dir>/mcp.json`. A server that only lives in the shared `~/.config/mcp/mcp.json` is read by the adapter but not by `pi mcp list`.
 - A project-local `.pi/mcp.json` is only read after project trust is granted.
+
+### `pi mcp list` is connected but the model cannot call `mcp__hps__*`
+
+- Check the exposure. `--exposure direct` declares the tools; `--exposure deferred` requires tool search to load them.
+- With `pi-mcp-adapter` installed, `/mcp` opens the adapter panel and can toggle a server between direct and proxy exposure.
 
 ### `verification_run` or Wiki reads return `network_required` / `local_process_required`
 
