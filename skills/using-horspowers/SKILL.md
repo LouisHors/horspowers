@@ -79,11 +79,12 @@ HPS 的确定性能力有两种接线，**能力相同，差别只在状态能�
 
 解析 stdout 的唯一 JSON 对象后严格按 `routing` 处理：
 
-1. `blocked_by` 非空：不得加载候选 Skill；报告“外置文档运行时尚未就绪，Horspowers 工作流已安全暂停”，普通手工代码操作仍可继续。
-2. `target_skill` 非空：立即加载这个唯一 Skill，不再进行泛化 Skill 判断。
-3. `direct`：直接处理请求，不调用 qmd 或流程 Skill；HPS 只做无上下文 route，Skill 直接响应。
-4. `uncertain`：只在 `candidates` 中比较；仍无法消歧时只问一个关键问题。
-5. HPS 返回 non-zero 时**先按错误码分类**，不要一律当成 HPS 不可用：
+1. `blocked_by` 非空（旧调用方的兼容字段，当前调用方看不到）：不得加载候选 Skill；报告“外置文档运行时尚未就绪，Horspowers 工作流已安全暂停”，普通手工代码操作仍可继续。
+2. `project.eligibility` 为 `external_project`，或 `config_action`/`config` 为 `external_required`：这是**身份未确认**的项目 —— 没有 remote 的本地仓库，或跳板机上的公司项目。不得创建本地配置或 `docs/`，也不得用本地文档替代；说明身份未确认，请用户确认 remote 或完成外置配置注册后重试。文档操作在运行时层 fail closed，因此继续普通手工代码操作可以，但不得把结果说成已持久化。
+3. `target_skill` 非空：立即加载这个唯一 Skill，不再进行泛化 Skill 判断。
+4. `direct`：直接处理请求，不调用 qmd 或流程 Skill；HPS 只做无上下文 route，Skill 直接响应。
+5. `uncertain`：只在 `candidates` 中比较；仍无法消歧时只问一个关键问题。
+6. HPS 返回 non-zero 时**先按错误码分类**，不要一律当成 HPS 不可用：
    - `invalid_request`：调用方形状或字段错误。修正 `hps call` envelope 后重试，不得降级。
    - `operation_unavailable` / `operation_not_found`：该 operation 尚未公开或不存在。按「执行通道」走对应的受控入口，不得据此推断 HPS 不可用。
    - `scope_expired`：scope 已失效。在 MCP 会话内重新 `task_prepare`，或用一次性 `hps call` 重做本次 operation。
