@@ -40,6 +40,21 @@ printf '%s' "$HPS_REQUEST" | \
 
 Claude Code 与 Windows PowerShell 示例见 `references/host-path-resolution.md`。脚本只能从 stdin 获取 JSON，argv 必须为空。
 
+## 执行通道（MCP 与 CLI）
+
+HPS 的确定性能力有两种接线，**能力相同，差别只在状态能活多久**：
+
+| 通道 | 生命期 | 能做什么 |
+|---|---|---|
+| `hps serve --stdio`（MCP sidecar） | 一个会话 | `task_prepare` 得到的 live scope 可被后续调用复用，并复用 qmd 连接与 document/snapshot cache |
+| `hps call`（JSON stdin，一次性） | 单个进程 | 只完成本次 operation；`scope_id` 随进程消失 |
+
+`scope_id` 绑定 `root`、Git identity、project fingerprint、config/manifest revision、host config digest 和 transport digest；任何一项变化或进程结束都会让它失效（`scope_expired`）。因此：
+
+- **无 MCP 时可以直接一次性调用**：`task_prepare`、`project_snapshot`、`git_preflight`、`diff_snapshot`、`document_resolve`、`runtime_doctor`。
+- **必需 `scope_id` 的 operation 不能跨 `hps call` 进程调用**：`project_context`、`document_search`、`document_get`、`document_manifest`、`document_verify`、`context_collect`、`verification_run`、`session_*`、`checkpoint_*`、`commit_preview`、`merge_preview`。它们要么在 MCP 会话内用同一 live scope 调用，要么走对应的受控兼容入口（document 读 → `document-runtime-cli.mjs`；背景收集 → `collect-context.mjs`）。
+- **不要**先 `hps call` 取 `scope_id`，再在下一条 `hps call` 里使用；那只会得到 `scope_expired`。HPS 的运行态不落盘，MCP 提供的是**会话内复用**而不是持久化；跨会话的持久化只由文档系统与 Wiki 承担。
+
 ## 处理结果
 
 解析 stdout 的唯一 JSON 对象后严格按 `routing` 处理：

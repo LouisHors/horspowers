@@ -83,6 +83,8 @@ printf '%s' '{"schema_version":1,"request_id":"r1","operation":"task_prepare","c
 
 支持 MCP 宿主时，优先启动会话级 stdio sidecar：`hps serve --stdio`。stdout 只输出结构化协议响应；Sidecar 继承宿主沙盒、网络、审批和 writable roots，不提供删除、任意 Shell、HTTP 或持久磁盘缓存。
 
+`hps call` 是一次性进程，`scope_id` 不会跨进程存活：不需要 scope 的 operation（`task_prepare`、`project_snapshot`、`git_preflight`、`diff_snapshot`、`document_resolve`、`runtime_doctor`）可直接调用；`project_context`、`document_search`、`document_get`、`document_manifest`、`document_verify`、`context_collect`、`verification_run`、`session_*`、`checkpoint_*`、`commit_preview`、`merge_preview` 这类必需 `scope_id` 的 operation 在独立 `hps call` 进程中会返回 `scope_expired`，必须走会话级 sidecar，或按 Skill 的执行通道分流走受控兼容入口（document 读 → `document-runtime-cli.mjs`；背景收集 → `collect-context.mjs`）。MCP 提供的是会话内复用而非持久化。
+
 ### 注册 HPS MCP（不修改全局配置）
 
 宿主安装层应把 native skill discovery 返回的安装根传给仓库内生成器；生成器只打印配置，或写入用户明确指定的项目文件，不会猜测路径、扫描用户目录或修改全局配置：

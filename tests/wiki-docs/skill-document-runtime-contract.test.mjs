@@ -912,6 +912,29 @@ test('runtime reference documents JSON stdin contract, safe documents, and the r
   assert.match(content, /argv/u);
 });
 
+test('CLI-only hosts route scope-requiring operations away from hps call', async () => {
+  // `scope_id` binds verified project facts in memory and never survives an
+  // `hps call` process, so a one-shot CLI host cannot "prepare first, reuse the
+  // scope later". The skills must name that boundary instead of implying it.
+  const usingHorspowers = await readRelative('skills/using-horspowers/SKILL.md');
+  const documentManagement = await readRelative('skills/document-management/SKILL.md');
+
+  assert.match(usingHorspowers, /无 MCP/u, 'using-horspowers must describe the no-MCP path');
+  for (const operation of ['task_prepare', 'project_snapshot', 'git_preflight', 'diff_snapshot', 'document_resolve', 'runtime_doctor']) {
+    assert.match(usingHorspowers, new RegExp(`\\b${operation}\\b`, 'u'), `using-horspowers must name ${operation} as callable one-shot`);
+  }
+  assert.match(usingHorspowers, /必需 `scope_id`/u, 'using-horspowers must name the scope-requiring boundary');
+  assert.match(usingHorspowers, /document-runtime-cli\.mjs/u, 'using-horspowers must name the compatibility entry for scope-bound host transports');
+
+  assert.doesNotMatch(
+    documentManagement,
+    /`hps call`\s*（先\s*`task_prepare`\s*取\s*scope）/u,
+    'document-management must not present a CLI process as able to reuse a scope'
+  );
+  assert.match(documentManagement, /必需 `scope_id`/u, 'document-management must mark which document reads need a scope');
+  assert.match(documentManagement, /document-runtime-cli\.mjs/u);
+});
+
 test('read and write workflow contracts retain their workflow gates through runtime actions', async () => {
   const expectedActions = {
     'executing-plans': ['search', 'get'],

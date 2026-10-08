@@ -142,6 +142,9 @@ test('document-management skill routes reads to HPS and writes to the compatibil
   assert.match(skill, /HPS 目前只公开 document \*\*只读\*\*工具/u);
   assert.match(skill, /`operation_unavailable`/u);
   assert.match(skill, /`document-runtime-cli\.mjs` 受控兼容写入入口/u);
-  assert.match(skill, /`resolve` \/ `get` \/ `search` \/ `manifest` \/ `verify`[\s\S]*?HPS/u);
+  assert.match(skill, /`resolve`[^\n]*HPS `document_resolve`[^\n]*不需要 scope/u);
+  assert.match(skill, /`get` \/ `search` \/ `manifest` \/ `verify`[\s\S]*?document-runtime-cli\.mjs/u);
+  assert.match(skill, /必需 `scope_id`/u);
+  assert.doesNotMatch(skill, /先 `task_prepare` 取 scope/u);
   assert.match(skill, /`create` \/ `update` \/ `archive` \/ `restore` \/ `config-change` \/ `record-session`[\s\S]*?document-runtime-cli\.mjs/u);
 });

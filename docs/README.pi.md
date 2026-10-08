@@ -78,6 +78,19 @@ printf '%s' '{"schema_version":1,"request_id":"r1","operation":"runtime_doctor",
 
 When the `hps` MCP server is registered, prefer `mcp__hps__*` tools over `hps call`: the sidecar keeps a live scope and a persistent qmd session, while each `hps call` is a one-shot process whose scope does not cross process boundaries.
 
+### MCP is not required — pick a channel
+
+`scope_id` binds verified project facts in memory and never survives an `hps call` process. It does not expire only because of time; any change to the bound Git identity, project fingerprint, config/manifest revision, host config digest, or transport digest invalidates it too.
+
+| Channel | Lifetime | Operations available |
+|---|---|---|
+| `mcp__hps__*` (sidecar) | one session | all 19; one `task_prepare` scope reused across calls, plus the persistent qmd session |
+| `hps call` (one-shot) | one process | only operations that do not require `scope_id`: `task_prepare`, `project_snapshot`, `git_preflight`, `diff_snapshot`, `document_resolve`, `runtime_doctor` |
+
+Operations that require `scope_id` (`project_context`, `document_search`, `document_get`, `document_manifest`, `document_verify`, `context_collect`, `verification_run`, `session_*`, `checkpoint_*`, `commit_preview`, `merge_preview`) return `scope_expired` when called from a separate `hps call` process. Without MCP the skills route document reads through the controlled `document-runtime-cli.mjs` compatibility entry instead of inventing a scope.
+
+HPS never writes its runtime state to disk: MCP gives you **session reuse, not persistence**. Durable state lives in the document system (`docs/`) and the Wiki.
+
 ## Path Resolution
 
 Pi prints the absolute path of every discovered skill. Resolve the installation root from it and never scan for it:
