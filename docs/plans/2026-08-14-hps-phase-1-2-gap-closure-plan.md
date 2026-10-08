@@ -148,6 +148,24 @@ Skill 保留判断、交互与编排，只把 route、document、context 和 ses
 - 历史记录「native probe 专项 9/9 通过」对应 fixture 与 project-local 只读探针，不覆盖真实 agent 步；已作废。
 - OpenCode fixture：2/2 通过，仅作为兼容证据，不属于当前验收门。
 
+## Pi agent 适配（Phase 1/2 之后，已完成）
+
+用户决策（2026-10-08）后把 Pi 作为本轮唯一验收宿主。范围：host 抽象、MCP 注册与模板、Skill 路径解析、native probe 真实验收、文档与版本；不含 SessionStart 注入（Pi 无此机制，改用 `AGENTS.md` 上下文文件，且不由 Horspowers 写入）。
+
+- Host 抽象：`HPS_HOSTS`、`hps-operations` 的 `host` enum、`workflow-router` 的 `VALID_HOSTS`、`hps-legacy-route-bridge` 均已支持 `pi`；OpenCode 仍不进入路由宿主集合。
+- MCP 注册：`SUPPORTED_HOSTS` 新增 `pi`（`mcpServers` 形状），新增 `templates/mcp/pi.json`。
+- 路径解析：`references/host-path-resolution.md` 与 `SKILL.md` 新增 Pi 行与示例；安装根由 Pi 给出的 skill 绝对路径向上解析，不扫描用户目录。
+- native probe：新增 `pi` 实现。使用临时 `PI_CODING_AGENT_DIR` + 临时 `mcp.json`（`exposure: "direct"`），符号链接复用 `auth.json`/`models.json`，不复制密钥、不改写用户级配置；`pi --print --mode json` 经 stdin 传 prompt。
+- 文档与版本：新增 `docs/README.pi.md`，版本 4.8.0。
+
+证据（2026-10-08 fresh，本分支 worktree 为安装根）：
+
+- `node scripts/run-hps-native-host-probe.mjs --host pi --installation-root <root> --cwd <root> --model zai-coding-cn/glm-5.3` → **`status: pass`，退出码 0**。direct 通道 19 工具 MCP 握手通过；`pi mcp list` connection `connected` / 19 工具；agent 步 `exitCode: 0`，真实调用 `mcp__hps__runtime_doctor` 成功，`runtimeDoctorCalls: 1`。
+- 合并回归：467/467 通过，0 failed、0 skipped。
+- 仓库审计：`lib/hps-native-host-probe.mjs` 的 fs mutation inventory 显式新增 `mkdir`/`symlink`，全部限定在探针自己的 `mkdtemp` artifact 目录内。
+
+Pi 分发方式（用户决策 A）：在 Pi 的 `settings.json` 声明指向安装根的本地路径 package，并移出旧的 `~/.agents/skills/horspowers` 手工 clone，以避免同名 skill 冲突；该操作属于本机环境配置，不在仓库内提交。
+
 ## 范围说明
 
 `project_bootstrap_*`、`document_change_*` 和 `document_transition_*` 是设计中明确的 Phase 5 后续写能力，不属于 Phase 1/2 公开工具完成门；当前保持不注册和 `operation_unavailable`。公司项目直接初始化 Wiki、Inbox submit 和状态 transition 仍不可作为 Phase 1/2 已实现效果宣传。
