@@ -1,6 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import { createHash } from 'node:crypto';
+import { mkdir, mkdtemp, realpath, rm, symlink } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 
 import { call } from '../../lib/hps-cli.mjs';
 import { HpsRuntime } from '../../lib/hps-runtime.mjs';
@@ -18,6 +21,33 @@ function gitFixture(status = '') {
     throw new Error(`unexpected git call: ${key}`);
   };
 }
+
+test('scope validation accepts any spelling of the same project directory', async () => {
+  // `openScope` stores the canonical root, but a host may hand over a path
+  // through a symlink (`/tmp` on macOS, a linked checkout, a bind mount).
+  // Comparing the strings rejects the very scope that was just issued.
+  const base = await mkdtemp(path.join(tmpdir(), 'hps-scope-link-'));
+  try {
+    const realDir = path.join(base, 'real-project');
+    const linkDir = path.join(base, 'linked-project');
+    await mkdir(realDir, { recursive: true });
+    await symlink(realDir, linkDir);
+    const canonical = await realpath(realDir);
+
+    const runtime = new HpsRuntime();
+    const scope_id = runtime.openScope({ root: canonical });
+
+    await runtime.assertScope(scope_id, { cwd: linkDir });
+    await runtime.assertScope(scope_id, { cwd: canonical });
+    await runtime.assertScope(scope_id, { cwd: realDir });
+
+    // A different directory still expires the scope, even a sibling.
+    await assert.rejects(() => runtime.assertScope(scope_id, { cwd: base }), /scope_expired/u);
+    await assert.rejects(() => runtime.assertScope(scope_id, { cwd: path.join(base, 'absent') }), /scope_expired/u);
+  } finally {
+    await rm(base, { recursive: true, force: true });
+  }
+});
 
 test('sensitive-only changes remain dirty while their names stay excluded', async () => {
   const runtime = new HpsRuntime({ gitExec: gitFixture('?? .env.local\n') });
@@ -313,6 +343,42 @@ test('task_prepare binds verified local identity and config facts including null
     /scope_expired/u
   );
   assert.deepEqual(calls, ['plan']);
+});
+
+test('an unregistered local project binds the facts its snapshot validator verifies', async () => {
+  // A plain git repository that has no horspowers config yet reports
+  // eligibility "skipped". task_prepare used to skip the verification merge in
+  // that case while still installing the verifying provider, so the stored
+  // facts were placeholders (null identity) that the first re-verification
+  // immediately contradicted: project_snapshot expired the scope and every
+  // later scoped call failed with it.
+  const localRules = async () => ({
+    routing_rule_version: 1,
+    thresholds: { explicit: 100, strong_pair: 80, weak: 40, high_confidence: 80, minimum_margin: 10 },
+    direct: { deny_patterns: [], allow_rules: [] },
+    routes: [{ route: 'brainstorming', skill_map: {}, explicit_patterns: ['design'], strong_groups: [], weak_patterns: [] }],
+    skill_map: { brainstorming: 'horspowers:brainstorming' }, conflicts: []
+  });
+  const runtime = new HpsRuntime({
+    loadRules: localRules,
+    planProject: async () => ({ eligibility: 'skipped', project_root: null, config_action: 'skipped', docs_action: 'skipped', reason: 'not_a_project' }),
+    projectContextDependencies: {
+      identifyGitProject: async () => ({ kind: 'external', project_root: '/repo', project_fingerprint: 'fp-unregistered' }),
+      readConfigAtRoot: () => null
+    },
+    gitPreflight: async () => ({ status: 'ready', root: '/repo', branch: { current: 'main', upstream: null }, dirty: false })
+  });
+
+  const prepared = await runtime.taskPrepare({ cwd: '/repo', input: { message: 'design this' } });
+  const scope_id = prepared.scope.scope_id;
+  const scope = runtime.scopes.get(scope_id);
+  assert.ok(scope.fact_keys.includes('revision'), 'the verified fact set must include revision');
+  assert.notEqual(scope.git_identity_digest, null, 'the bound identity must be the verified one');
+
+  const snapshot = await runtime.projectSnapshot({ cwd: '/repo', scope_id });
+  assert.equal(snapshot.root, '/repo');
+  // The scope survives, so a later consumer still works.
+  assert.equal(await runtime.projectContext({ cwd: '/repo', scope_id }), null);
 });
 
 test('unregistered local identity binds config null-to-value changes and expires the scope', async () => {
