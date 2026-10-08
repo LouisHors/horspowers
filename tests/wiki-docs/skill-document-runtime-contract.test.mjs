@@ -92,7 +92,10 @@ const runtimeTextExtensions = new Set([
   '.pl', '.ps1', '.py', '.rb', '.rs', '.sh', '.swift', '.toml', '.ts',
   '.tsx', '.yaml', '.yml', '.zsh'
 ]);
-const ignoredAuditDirectories = new Set(['.git', '.worktrees', 'coverage', 'node_modules']);
+// Retained test fixtures under `.artifacts` are written and removed by other
+// test files in parallel; traversing them makes this audit fail at random and
+// grow with every run. `.horspowers` state is likewise runtime-only.
+const ignoredAuditDirectories = new Set(['.git', '.worktrees', 'coverage', 'node_modules', '.artifacts', '.horspowers']);
 const nodeFsMutationMethods = new Set([
   'appendFile', 'chmod', 'chown', 'copyFile', 'cp', 'createWriteStream',
   'fchmod', 'fchown', 'ftruncate', 'link', 'lchmod', 'lchown', 'lutimes',
@@ -871,6 +874,16 @@ test('repository audit permits direct global qmd search only in the runtime-enfo
   assert.deepEqual(matches, ['skills/brainstorming/scripts/collect-context.mjs']);
   const collector = await readRelative('skills/brainstorming/scripts/collect-context.mjs');
   assert.match(collector, /if \(runtimeResult\?\.identity_status !== 'external'\) \{[\s\S]*?DOCUMENT_RUNTIME_REQUIRED/u);
+});
+
+test('repository audit never traverses retained in-repo test artifacts', async () => {
+  // The audit walks the whole repository. Fixtures under tests/.artifacts are
+  // created and removed by other test files running in parallel, so traversing
+  // them makes this audit fail at random (readdir on a removed directory) and
+  // grow without bound between runs. The audit must enumerate source only.
+  const allFiles = await walk(repoRoot);
+  const retained = allFiles.map(relative).filter((rel) => rel.startsWith('tests/.artifacts/'));
+  assert.deepEqual(retained, []);
 });
 
 test('runtime reference documents JSON stdin contract, safe documents, and the runtime status catalog', async () => {

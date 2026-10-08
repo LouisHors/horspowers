@@ -125,6 +125,34 @@ test('opaque runtime ids remain valid control state while credential prefixes st
   assert.deepEqual((await runtime.checkpointGet({ cwd: '/repo', scope_id, checkpoint_id: 'opaque-checkpoint' })).value, { request_id: scope_id });
 });
 
+test('every generated scope id satisfies the control-state contract it is echoed through', async () => {
+  // `openScope` draws an opaque id that later operations echo back inside
+  // control state. If the generator can produce a value its own validator
+  // rejects, a share of runs fail at random. The sample is large enough that
+  // such a generator fails here instead of in production.
+  const runtime = new HpsRuntime();
+  const unsafe = [];
+  for (let index = 0; index < 4096; index += 1) {
+    const scope_id = runtime.openScope({ root: '/repo' });
+    try {
+      await runtime.sessionPrepare({ cwd: '/repo', scope_id, request_id: `request-${index}`, value: { scope_id } });
+    } catch {
+      unsafe.push(scope_id);
+    }
+  }
+  assert.deepEqual(unsafe, []);
+});
+
+test('generated scope ids cannot collide with control-state content heuristics', async () => {
+  // `-` is a word boundary and `_`/`-` appear in credential prefixes, so an id
+  // containing them can be rejected by the same validator that guards the
+  // field it is stored in. Generated ids must stay clear of that alphabet.
+  const runtime = new HpsRuntime();
+  const scope_id = runtime.openScope({ root: '/repo' });
+  assert.doesNotMatch(scope_id, /[-_.\s]/u, 'generated scope ids must not use validator-significant characters');
+  await runtime.sessionPrepare({ cwd: '/repo', scope_id, request_id: 'opaque', value: { scope_id } });
+});
+
 test('state reads and idempotent session results are isolated from caller mutation', async () => {
   const runtime = new HpsRuntime();
   const scope_id = runtime.openScope({ root: '/repo' });
