@@ -7,6 +7,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 import { HPS_OPERATION_DEFINITIONS, exposedHpsTools } from '../../lib/hps-operations.mjs';
+import { parseCallRequest } from '../../lib/hps-protocol.mjs';
 
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const skillPath = path.join(repoRoot, 'skills/using-horspowers/SKILL.md');
@@ -20,6 +21,19 @@ const hpsBin = path.join(repoRoot, 'bin', 'hps');
 
 function backticked(text) {
   return [...text.matchAll(/`([^`]+)`/gu)].map((match) => match[1]);
+}
+
+/** Every fenced ```json block that parses as JSON. */
+function jsonBlocks(markdown) {
+  const blocks = [];
+  for (const match of markdown.matchAll(/```json\n([\s\S]*?)```/gu)) {
+    try { blocks.push(JSON.parse(match[1])); } catch { /* illustrative, not JSON */ }
+  }
+  return blocks;
+}
+
+function isCallRequest(value) {
+  try { parseCallRequest(value); return true; } catch { return false; }
 }
 
 function expandGlob(name) {
@@ -77,6 +91,13 @@ export function validateSkillContract(skillText) {
   if (!skillText.includes('`project.config_action`') || !skillText.includes('`project.docs_action`')) {
     violations.push('skill must name project.config_action and project.docs_action as the primary change state');
   }
+  // The flat {schema_version, host, cwd, message, active_route} object is the
+  // legacy route-request.mjs input. `hps call` requires the canonical envelope,
+  // so the skill must ship an example the CLI actually accepts; otherwise an
+  // agent following it gets `invalid_request` and silently falls back.
+  if (!jsonBlocks(skillText).some(isCallRequest)) {
+    violations.push('skill must show a `hps call` request the CLI accepts: schema_version, request_id, operation, cwd, input');
+  }
   return violations;
 }
 
@@ -113,6 +134,16 @@ test('the skill operation lists match the HPS operation registry', async () => {
 test('the contract checker rejects both kinds of drift', () => {
   const registry = operationListsFromRegistry();
   const render = (free, scoped, extra = '') => [
+    '## 安全输入契约',
+    '```json',
+    JSON.stringify({
+      schema_version: 1,
+      request_id: 'route-1',
+      operation: 'task_prepare',
+      cwd: '/absolute/project/path',
+      input: { host: 'pi', message: '先写失败测试', active_route: null }
+    }, null, 2),
+    '```',
     '## 执行通道',
     `- **无 MCP 时可以直接一次性调用**：${free.map((name) => `\`${name}\``).join('、')}。`,
     `- **必需 \`scope_id\` 的 operation 不能跨 \`hps call\` 进程调用**：${scoped.map((name) => `\`${name}\``).join('、')}。`,
@@ -134,6 +165,17 @@ test('the contract checker rejects both kinds of drift', () => {
   // A list that gains an operation the registry does not expose.
   const listDrift = render([...registry.free, 'verify_everything'].sort(), registry.scoped);
   assert.ok(validateSkillContract(listDrift).some((violation) => violation.includes('scope-free list drifted')));
+
+  // The request example must be one the CLI accepts.
+  const flatOnly = render(registry.free, registry.scoped).replace(
+    /"operation": "task_prepare",\n  "cwd"/u,
+    '"host": "pi",\n  "cwd"'
+  );
+  assert.notEqual(flatOnly, render(registry.free, registry.scoped));
+  assert.ok(
+    validateSkillContract(flatOnly).some((violation) => violation.includes('`hps call` request')),
+    'checker must reject a flat route-request payload presented as an hps call request'
+  );
 
   // The lists must survive; dropping them is not a way to pass.
   assert.deepEqual(validateSkillContract('## 执行通道\n无列表\n'), [
