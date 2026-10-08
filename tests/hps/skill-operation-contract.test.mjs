@@ -13,6 +13,7 @@ import { parseCallRequest } from '../../lib/hps-protocol.mjs';
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const skillDir = path.join(repoRoot, 'skills/using-horspowers');
 const skillPath = path.join(skillDir, 'SKILL.md');
+const pathReferencePath = path.join(skillDir, 'references/host-path-resolution.md');
 const hpsBin = path.join(repoRoot, 'bin', 'hps');
 
 // The skill text and the runtime have drifted twice already: `scope_id` was
@@ -133,6 +134,34 @@ export function validateSkillContract(skillText, { fileExists = null } = {}) {
   return violations;
 }
 
+/**
+ * Two documents that describe the same channel must agree. Sharing one
+ * variable name across two different payload shapes is what made the flat
+ * object look like an `hps call` payload, so the names are part of the
+ * contract, not cosmetics.
+ * @param {string} skillText
+ * @param {string} pathReferenceText
+ * @returns {string[]}
+ */
+export function validateChannelDocs(skillText, pathReferenceText) {
+  const violations = [];
+  for (const [name, text] of [['SKILL.md', skillText], ['host-path-resolution.md', pathReferenceText]]) {
+    if (!text.includes('HPS_CALL_REQUEST')) {
+      violations.push(`${name} must name the call envelope variable HPS_CALL_REQUEST`);
+    }
+    if (/\bHPS_REQUEST\b/u.test(text)) {
+      violations.push(`${name} must not use the ambiguous HPS_REQUEST alongside HPS_CALL_REQUEST`);
+    }
+  }
+  if (!/`invalid_request`[\s\S]{0,200}不得[\s\S]{0,80}降级/u.test(skillText)) {
+    violations.push('skill must state that invalid_request is a caller shape error and must not trigger the fallback');
+  }
+  if (!/operation_unavailable|operation_not_found/u.test(skillText)) {
+    violations.push('skill must classify non-availability codes instead of treating any non-zero result as HPS unavailable');
+  }
+  return violations;
+}
+
 /** Basenames of every .mjs file under the given roots, for bare script references. */
 async function indexScriptBasenames(roots) {
   const index = new Set();
@@ -190,7 +219,13 @@ test('the skill only points at references and scripts that exist', async () => {
   assert.deepEqual(validateSkillContract(skillText, { fileExists }), []);
 });
 
-test('the contract checker rejects both kinds of drift', () => {
+test('the two channel documents agree on payload names and error classes', async () => {
+  const skillText = await readFile(skillPath, 'utf8');
+  const pathReferenceText = await readFile(pathReferencePath, 'utf8');
+  assert.deepEqual(validateChannelDocs(skillText, pathReferenceText), []);
+});
+
+test('the contract checker rejects both kinds of drift', async () => {
   const registry = operationListsFromRegistry();
   const render = (free, scoped, extra = '') => [
     '## 安全输入契约',
@@ -244,6 +279,26 @@ test('the contract checker rejects both kinds of drift', () => {
     'checker must reject a reference to a missing file'
   );
   assert.deepEqual(validateSkillContract(staleReference, { fileExists: () => true }), []);
+
+  // A non-zero result must not be flattened into "HPS unavailable", and the
+  // two documents must not disagree about the payload variable.
+  const channelSkill = await readFile(skillPath, 'utf8');
+  const channelReference = await readFile(pathReferencePath, 'utf8');
+  assert.ok(
+    validateChannelDocs(channelSkill.replace(/HPS_CALL_REQUEST/gu, 'HPS_REQUEST'), channelReference)
+      .some((violation) => violation.includes('ambiguous HPS_REQUEST')),
+    'checker must reject the ambiguous variable name'
+  );
+  assert.ok(
+    validateChannelDocs(channelSkill, channelReference.replace(/HPS_CALL_REQUEST/gu, 'HPS_PAYLOAD'))
+      .some((violation) => violation.includes('HPS_CALL_REQUEST')),
+    'checker must reject a document that names the envelope differently'
+  );
+  assert.ok(
+    validateChannelDocs(channelSkill.replace(/`invalid_request`[\s\S]{0,200}不得[\s\S]{0,80}降级/gu, ''), channelReference)
+      .some((violation) => violation.includes('caller shape error')),
+    'checker must require the invalid_request prohibition'
+  );
 
   // The lists must survive; dropping them is not a way to pass.
   assert.deepEqual(validateSkillContract('## 执行通道\n无列表\n'), [
