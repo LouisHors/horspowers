@@ -9,6 +9,8 @@ description: You MUST use this when implementation is complete, all tests pass, 
 
 ## Step 1：验证
 
+按 `horspowers:verification-before-completion` 执行本步骤：证据先于断言，未确认输出前不得声明完成。
+
 1. 运行计划规定的测试、静态检查和构建。
 2. 测试失败、输出异常或需求未满足时停止；修复后重新验证，不进入集成选项。
 3. 读取当前分支、基线和差异，确认没有无关修改。
