@@ -1,5 +1,28 @@
 # Horspowers Release Notes
 
+## v4.8.1 (2026-10-08)
+
+### Documentation and Skill Contracts
+
+**明确 HPS 两条执行通道的边界（MCP 与 CLI）**
+- `using-horspowers` 新增 `## 执行通道`：列出无 scope 依赖、可一次性 `hps call` 调用的 operation（`task_prepare`、`project_snapshot`、`git_preflight`、`diff_snapshot`、`document_resolve`、`runtime_doctor`），以及必需 `scope_id`、不能跨 `hps call` 进程调用的 operation（`project_context`、`document_search`、`document_get`、`document_manifest`、`document_verify`、`context_collect`、`verification_run`、`session_*`、`checkpoint_*`、`commit_preview`、`merge_preview`）。
+- `document-management` 修正了无法实现的表述「`hps call`（先 `task_prepare` 取 scope）」：`resolve` 可走一次性 CLI；`get`/`search`/`manifest`/`verify` 必需 `scope_id`，无 MCP 时改走受控兼容入口 `document-runtime-cli.mjs`，不再依赖「HPS 不可用」作为前提。
+- 明确 HPS 运行态不落盘（`documentCache`/`sessionState`/`checkpoints`/`sessionRecords` 均为内存 Map）：MCP 提供的是**会话内复用**，不是持久化；跨会话持久化由文档系统与 Wiki 承担。scope 还受 5 分钟 TTL 与 `generation`/`fact_digest` 校验约束。
+- `docs/README.pi.md` 新增 `MCP is not required — pick a channel`；`docs/README.codex.md`、`docs/README.opencode.md` 补充同样的边界。
+
+### Testing
+
+- 新增 `CLI-only hosts route scope-requiring operations away from hps call`（确定性，断言技能文本不得把 CLI 进程描述为可复用 scope）。
+- 更新 `tests/hps/skill-chain.test.mjs` 与 `tests/hps/skill-entrypoint-chain.test.mjs` 的断言以锁住新分流，并新增禁止旧跨进程 scope 表述的反向断言。
+- 合并回归（collector + wiki-docs + workflow-router + hps）：468/468 通过，0 failed、0 skipped。
+
+### Compatibility and Rollback
+
+- 纯文本与契约变更，无运行时代码改动；MCP 仍为可选增强。
+- 未删除文件，未修改用户级配置。回滚可直接 revert 本版提交。
+
+---
+
 ## v4.8.0 (2026-10-08)
 
 ### New Features

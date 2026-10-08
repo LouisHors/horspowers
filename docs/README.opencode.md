@@ -8,6 +8,8 @@ Complete guide for using Superpowers with [OpenCode.ai](https://opencode.ai).
 
 OpenCode 可将 `hps serve --stdio` 配置为 MCP sidecar；无 MCP 时使用 `hps call` JSON stdin/stdout 回退入口。PATH 中没有 `hps` 时，使用已知插件安装根下的 `<installation-root>/bin/hps`，不要扫描用户目录。两者共享同一 Core，并继承宿主沙盒权限。当前公开工具限于只读能力、内存状态和无副作用 preview；bootstrap 与文档 submit/transition 尚不注册。
 
+注意 `hps call` 是一次性进程，`scope_id` 不跨进程存活：`project_context`、`document_search`、`document_get`、`document_manifest`、`document_verify`、`context_collect`、`verification_run`、`session_*`、`checkpoint_*`、`commit_preview`、`merge_preview` 这类必需 `scope_id` 的 operation 在独立 `hps call` 进程中返回 `scope_expired`；无 MCP 时按 Skill 的执行通道分流到受控兼容入口。MCP 提供的是会话内复用而非持久化。
+
 ### 注册 HPS MCP（项目级、无全局写入）
 
 从 native plugin discovery 获取安装根后，可用仓库内生成器打印 OpenCode 配置：

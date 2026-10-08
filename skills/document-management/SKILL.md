@@ -11,7 +11,7 @@ description: "You MUST use this when the user wants project documentation initia
 
 ## 统一入口
 
-先阅读 `horspowers:using-horspowers/references/document-runtime.md`。确定性边界优先使用 HPS `task_prepare` 与已注册的 document MCP tools；无 MCP 时用安装根下的 `hps call` JSON stdin。所有请求仍必须经过统一 runtime 的 `resolve`、`get`、`search`、`create`、`update`、`archive`、`restore`、`config-change` 或 `record-session`，不得用配置标记、目录存在性或文件路径决定 backend。
+先阅读 `horspowers:using-horspowers/references/document-runtime.md`。确定性边界优先使用 HPS：有 MCP 时在同一 live scope 内调用 `document_*` 工具；无 MCP 时，不需要 scope 的 `resolve` 用一次性 `hps call`，而 `get`、`search`、`manifest`、`verify` 这类**必需 `scope_id`** 的读操作改用受控兼容入口 `document-runtime-cli.mjs`（CLI 进程之间无法复用 scope，完整分流见 `horspowers:using-horspowers` 的 `## 执行通道`）。所有请求仍必须经过统一 runtime 的 `resolve`、`get`、`search`、`create`、`update`、`archive`、`restore`、`config-change` 或 `record-session`，不得用配置标记、目录存在性或文件路径决定 backend。
 
 ### 读写传输（Phase 1/2）
 
@@ -19,7 +19,8 @@ HPS 目前只公开 document **只读**工具。写操作按设计留到 Phase 5
 
 | 运行时动作 | 默认入口 | 回退 |
 | --- | --- | --- |
-| `resolve` / `get` / `search` / `manifest` / `verify` | HPS MCP `document_*`，或 `hps call`（先 `task_prepare` 取 scope） | HPS 不可发现或协议错误时，用 `document-runtime-cli.mjs` |
+| `resolve` | HPS `document_resolve`（`hps call` 或 MCP 均可；不需要 scope） | HPS 不可发现或协议错误时，用 `document-runtime-cli.mjs` |
+| `get` / `search` / `manifest` / `verify` | MCP 会话内用同一 live scope 调 `document_*`；无 MCP 时用 `document-runtime-cli.mjs` | 无；这四项**必需 `scope_id`**，不得用 `hps call` 跨进程调用 |
 | `create` / `update` / `archive` / `restore` / `config-change` / `record-session` | `document-runtime-cli.mjs` 受控兼容写入入口 | 无；禁止退回手工作文件操作 |
 
 写入同样使用 `{schema_version, cwd, action, request, confirmed}` 的 JSON stdin 契约，正文不得进入 argv、环境变量或命令字符串。`operation_unavailable` 只表示该动作尚未在 HPS 侧公开，写入语义仍由统一 DocumentRuntime 维护。
