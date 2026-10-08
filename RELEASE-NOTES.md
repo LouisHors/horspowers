@@ -1,5 +1,36 @@
 # Horspowers Release Notes
 
+## v4.8.7 (2026-10-08)
+
+### Bug Fixes
+
+**Pi 缺少工具名映射**
+
+技能与子代理 prompt 一直沿用 Claude Code 的工具名（`Task tool` ×5、`TodoWrite` ×3），而 `references/` 里只有 `codex-tools.md`（**仅映射 Codex**）。Pi 下运行时，没有任何文档告诉 agent `Task` → `subagent`、`TodoWrite` → `todo`。
+
+- 新增 `references/pi-tools.md`：工具名映射表、子代理派发步骤、命名代理类型的处理、上下文与发现（无 SessionStart hook、路径解析、HPS 注册与一次性 CLI 的通道分流）。
+- `using-horspowers` 的「宿主工具映射」指向该文件。
+- 5 个 reviewer/implementer prompt 模板的派发行改为三宿主并列（Claude `Task` / Codex `spawn_agent` / Pi `subagent`）—— 子代理只拿到 prompt 本身，不一定能看到入口技能。
+- `writing-skills/persuasion-principles.md` 的 `TodoWrite` 同样改为三宿主并列。
+
+**两个技能被孤立：内容存在但没有任何入站交接**
+
+- `verification-before-completion`（139 行）：`AGENTS.md` 0 次提及，也没有任何技能交接它，只能靠 description 匹配被加载 —— 而它是“声明完成前必须先验证”的门禁。现由 `test-driven-development`（完成前检查）与 `finishing-a-development-branch`（Step 1 验证）交接。
+- `using-git-worktrees`（250 行）：`AGENTS.md` 把它列为工作流第 2 步，但只有 `automated-development-workflow` 提到它（作为“被替代项”），而 `executing-plans` 与 `subagent-driven-development` 都假设已经存在隔离环境。现由这两个执行入口在开始前交接；该技能自身先检测已有隔离，不会重复创建。
+
+### Testing
+
+- `tests/hps/skill-chain.test.mjs` 新增两条：三宿主工具映射必须存在、且 prompt 模板不得只写 Claude 工具名；隔离与完成验证必须被工作流接线。均先 RED 后 GREEN。
+- 全量回归 **484/484**，0 failed、0 skipped。
+
+### Compatibility and Rollback
+
+- 仅技能文本与参考文档；无 CLI、协议或运行时改动。
+- 按设计仍由情境或用户显式触发的技能（`receiving-code-review`、`dispatching-parallel-agents`、`ai-flashcard`、`codex-issue-action`、`writing-skills`）未改动。
+- 回滚可直接 revert 本版提交。
+
+---
+
 ## v4.8.6 (2026-10-08)
 
 ### Bug Fixes
