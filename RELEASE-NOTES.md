@@ -1,5 +1,32 @@
 # Horspowers Release Notes
 
+## v4.8.0 (2026-10-08)
+
+### New Features
+
+**Pi agent 适配（首个通过真实验收的宿主）**
+- Host 抽象扩展：`HPS_HOSTS`、operation `host` enum、workflow router `VALID_HOSTS`、legacy route bridge 均支持 `pi`。
+- MCP 注册：`SUPPORTED_HOSTS` 新增 `pi`（`mcpServers` 形状），新增 `templates/mcp/pi.json`，`scripts/install-hps-mcp.mjs` 支持 `--host pi`。
+- 路径解析：`skills/using-horspowers/references/host-path-resolution.md` 与 `SKILL.md` 新增 Pi 行与示例（安装根由 Pi 给出的 skill 绝对路径向上解析）。
+- native host probe 支持 `pi`：使用临时 `PI_CODING_AGENT_DIR` 与临时 `mcp.json`（`exposure: "direct"`），**不改写全局 MCP 配置**；符号链接复用操作者的 `auth.json`/`models.json` 而不复制密钥；`pi --print --mode json` 经 stdin 传 prompt，并容忍模型把答案包在 ```` ```json ```` 围栏里。
+- 文档：新增 `docs/README.pi.md`。
+
+### Verification
+
+- **真实 pi native probe：`STATUS = pass`（退出码 0）**。direct 通道（`hps version`、`hps call`、`hps serve --stdio` 的 19 工具 MCP 握手）通过；`pi mcp list` 报告 `hps` connected / 19 工具；agent 步退出码 0，真实调用 `mcp__hps__runtime_doctor` 成功（`runtimeDoctorCalls: 1`）。
+- 合并回归（collector + wiki-docs + workflow-router + hps）：467/467 通过，0 failed、0 skipped。
+- 新增测试先 RED 后 GREEN：capability adapter、MCP 注册、router host、probe invocation/parser（含围栏 JSON 解析）。
+- 仓库审计按预期拒绝未登记的文件系统写入：`lib/hps-native-host-probe.mjs` 的 mutation inventory 显式新增 `mkdir`/`symlink`，均限定在探针自己的 `mkdtemp` artifact 目录内。
+
+### Compatibility and Rollback
+
+- Codex / Claude Code 适配仍不作为验收门（用户决策 2026-10-08）；两宿主的 direct 通道通过，真实 agent 步为宿主侧 timeout/failed，不计为通过。
+- Pi 无 SessionStart hook：Horspowers 不为 Pi 写入 `AGENTS.md`，也不安装 Pi extension。
+- Pi capability 默认 fail closed；`approval_available` 无 Pi 对应语义，应保持 `false`。
+- 未删除文件，未自动修改用户级配置。探针的所有写入都限制在临时目录。
+
+---
+
 ## v4.7.1 (2026-10-08)
 
 ### New Features
