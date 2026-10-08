@@ -15,28 +15,35 @@ Codex 的 symlink、junction 和复制安装都以 native discovery 目录为入
 
 所有示例都把宿主安全序列化的 JSON 放入 stdin；绝不把用户消息插入 command string。
 
+**两个入口的 stdin 形状不同**（完整定义见 `hps` SKILL.md 的「安全输入契约」）：
+
+- `hps call` 要 **canonical envelope**：`{schema_version, request_id, operation, cwd, input:{host, message, active_route}}` —— 用下面的 `HPS_CALL_REQUEST`。
+- legacy `route-request.mjs` 要 **扁平对象**：`{schema_version, host, cwd, message, active_route}` —— 用下面的 `HORSPOWERS_ROUTER_INPUT`。
+
+把扁平对象喂给 `hps call` 只会得到 `invalid_request`；那是形状用错，不是 HPS 不可用。
+
 ```bash
 # Claude Code（首选）
-printf '%s' "$HORSPOWERS_ROUTER_INPUT" | \
+printf '%s' "$HPS_CALL_REQUEST" | \
   "${CLAUDE_PLUGIN_ROOT}/bin/hps" call
 
 # Codex macOS/Linux（首选；HPS_INSTALL_ROOT 来自 native discovery）
-printf '%s' "$HORSPOWERS_ROUTER_INPUT" | \
+printf '%s' "$HPS_CALL_REQUEST" | \
   "$HPS_INSTALL_ROOT/bin/hps" call
 
-# 无 HPS 时才使用兼容回退
+# 无 HPS 时才使用兼容回退（注意它要的是扁平对象）
 printf '%s' "$HORSPOWERS_ROUTER_INPUT" | \
   node "$HPS_INSTALL_ROOT/skills/using-horspowers/scripts/route-request.mjs"
 ```
 
 ```powershell
 # Codex Windows PowerShell（首选）
-$env:HORSPOWERS_ROUTER_INPUT |
+$env:HPS_CALL_REQUEST |
   "$env:HPS_INSTALL_ROOT\bin\hps" call
 ```
 
 ```bash
 # Pi（首选；HPS_INSTALL_ROOT 来自 skill discovery 给出的 skill 路径）
-printf '%s' "$HORSPOWERS_ROUTER_INPUT" | \
+printf '%s' "$HPS_CALL_REQUEST" | \
   "$HPS_INSTALL_ROOT/bin/hps" call
 ```

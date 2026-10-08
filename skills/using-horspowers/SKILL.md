@@ -13,24 +13,43 @@ description: Use at the entry to a substantive Horspowers workflow so the local 
 
 ## 安全输入契约
 
-路由器只接收一份 JSON stdin：
+两个入口接收**不同的** JSON stdin 形状，不要混用。
+
+**`hps call`（首选）** 接收 canonical envelope：`operation` 指定本次操作，`input` 是该操作的参数。
 
 ```json
 {
   "schema_version": 1,
-  "host": "codex",
+  "request_id": "route-1",
+  "operation": "task_prepare",
+  "cwd": "/absolute/project/path",
+  "input": {
+    "host": "pi",
+    "message": "当前用户原文",
+    "active_route": null
+  }
+}
+```
+
+**legacy `route-request.mjs`（仅兼容回退）** 接收扁平对象：
+
+```json
+{
+  "schema_version": 1,
+  "host": "pi",
   "cwd": "/absolute/project/path",
   "message": "当前用户原文",
   "active_route": null
 }
 ```
 
-- 必须由宿主的结构化输入或安全环境变量生成 JSON。
+- 两份输入都必须由宿主的结构化输入或安全环境变量生成。
 - `host` 取当前宿主：`codex`、`claude` 或 `pi`。
 - 不得把用户原文拼接到 shell command、argv 或代码字符串。
 - 执行前验证脚本是普通可读文件并解析真实路径；详细路径见 `references/host-path-resolution.md`。
+- 把扁平对象喂给 `hps call`（或反之）只会得到 `invalid_request`；那不是 HPS 不可用，不得据此降级到兼容入口。
 
-Codex macOS/Linux 的 HPS 安全管道示例：
+Codex macOS/Linux 的 HPS 安全管道示例（`HPS_REQUEST` 是上面的 canonical envelope）：
 
 ```bash
 printf '%s' "$HPS_REQUEST" | \
