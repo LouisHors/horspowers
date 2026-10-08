@@ -1,5 +1,26 @@
 # Horspowers Release Notes
 
+## v4.8.3 (2026-10-08)
+
+### Bug Fixes
+
+**`using-horspowers` 的 stdin 契约写错了形状，导致主路径按字面执行必失败**
+- 技能「安全输入契约」给出的是**扁平对象** `{schema_version, host, cwd, message, active_route}` —— 那是 **legacy `route-request.mjs`** 的输入（`lib/workflow-router.mjs` 的 `INPUT_KEYS`）。但同一节的示例却把它喂给 `hps call`，而 `hps call` 要的是 **canonical envelope** `{schema_version, request_id, operation, cwd, input}`。
+- 实测：扁平对象喂 `hps call` → `invalid_request`。后果是 agent 照技能执行 → 报错 → 按「处理结果」第 5 条判为「HPS 不可用」→ **静默降级到兼容入口**。主路径名义上存在、实际不可用。
+- 修正：技能与 `references/host-path-resolution.md` 现在分开写明两种形状，并明确「把扁平对象喂 `hps call` 只会得到 `invalid_request`，那不是 HPS 不可用，不得据此降级」。示例改用 `HPS_CALL_REQUEST`（envelope），兼容入口用 `HORSPOWERS_ROUTER_INPUT`（扁平）。
+
+### Testing
+
+- 技能契约测试新增一条：**技能必须包含一份 `hps call` 真正接受的请求示例**（用 `parseCallRequest` 校验文档里的 fenced JSON 块）。此前的检查只看 operation 清单与 `task_prepare` 的结果字段，看不到请求形状。
+- 反向验证：合成文档用扁平对象冒充 `hps call` 请求时，检查器会报 ``skill must show a `hps call` request the CLI accepts``。
+
+### Compatibility and Rollback
+
+- 仅有技能文本与测试变更；CLI、协议、operation 注册表均未改（`hps call` 一直要求 envelope，是文档写错了）。
+- 回滚可直接 revert 本版提交；已按旧文档降级到兼容入口的宿主行为不变。
+
+---
+
 ## v4.8.2 (2026-10-08)
 
 ### Testing
