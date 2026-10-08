@@ -72,6 +72,7 @@ test('Pi probe uses a temporary agent directory and keeps the prompt out of argv
   assert.equal(agent.command, 'pi');
   assert.ok(agent.args.includes('--print'));
   assert.ok(agent.args.includes('--mode'));
+  assert.ok(agent.args.includes('--no-session'));
   assert.equal(agent.stdin, HOST_PROBE_PROMPT);
   assert.equal(agent.args.includes(HOST_PROBE_PROMPT), false);
   assert.equal(agent.args.some((arg) => arg.includes(HOST_PROBE_PROMPT)), false);
