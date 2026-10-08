@@ -1,5 +1,29 @@
 # Horspowers Release Notes
 
+## v4.8.5 (2026-10-08)
+
+### Bug Fixes
+
+**`using-horspowers` 把「任何 non-zero」一律当成 HPS 不可用**
+- 「处理结果」第 5 条原文：``HPS CLI/MCP non-zero：先报告 HPS 不可用，再按旧 router 兼容入口做一次安全 fallback``。而 `invalid_request`（调用方形状错）也是一个 non-zero 结果，于是它与同一文档里新增的「不得据此降级」直接矛盾 —— 两条规则同时成立时，不明确哪条优先，agent 可能仍然降级。
+- 现在改为**按错误码分类**：`invalid_request` → 修正 envelope 后重试且不得降级；`operation_unavailable` / `operation_not_found` → 走对应受控入口，不得据此推断不可用；`scope_expired` → 重新 `task_prepare` 或重做本次 operation；只有 **HPS 不可发现、协议不可用、或明确报告初始化回退**时才走 legacy fallback。四个错误码均在 `HPS_ERROR_CATALOG` 中。
+
+**两份通道文档给同一负载用了不同变量名**
+- `SKILL.md` 用 `HPS_REQUEST`，`references/host-path-resolution.md` 用 `HPS_CALL_REQUEST`，指的是同一份 canonical envelope。变量名不统一正是把扁平对象误当成 `hps call` 负载的温床，因此统一为 `HPS_CALL_REQUEST`（扁平对象继续用 `HORSPOWERS_ROUTER_INPUT`）。
+
+### Testing
+
+- 新增 `validateChannelDocs(skillText, pathReferenceText)` 与对应测试：两份文档必须同时命名 `HPS_CALL_REQUEST`、不得出现歧义的 `HPS_REQUEST`、`invalid_request` 必须与「不得降级」共现、且必须对非可用类错误码分类。
+- 反向验证：把变量名改回 `HPS_REQUEST`、把参照文档改成 `HPS_PAYLOAD`、删掉 `invalid_request` 禁令，三种变异都被拒绝。
+- 全量回归 **479/479**。
+
+### Compatibility and Rollback
+
+- 仅技能文本与测试变更；CLI、协议、operation 注册表未改。
+- 回滚可直接 revert 本版提交。
+
+---
+
 ## v4.8.4 (2026-10-08)
 
 ### Testing
