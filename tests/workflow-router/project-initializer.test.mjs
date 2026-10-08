@@ -1,4 +1,4 @@
-import test from 'node:test';
+import test, { before } from 'node:test';
 import assert from 'node:assert/strict';
 import { access, chmod, lstat, mkdir, readdir, readFile, symlink, writeFile } from 'node:fs/promises';
 import { constants } from 'node:fs';
@@ -18,6 +18,10 @@ import {
 const run = promisify(execFile);
 const repoRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
 const artifactsRoot = path.join(repoRoot, 'tests/.artifacts/workflow-router');
+
+// Retained fixtures are kept for debugging but must stay bounded.
+import { pruneRetainedArtifacts } from '../helpers/retained-artifacts.mjs';
+before(async () => { await pruneRetainedArtifacts(artifactsRoot); });
 let fixtureSequence = 0;
 
 async function retainedFixture(name) {

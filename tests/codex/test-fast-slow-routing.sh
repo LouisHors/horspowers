@@ -4,6 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Keep retained fixtures bounded; see tests/helpers/retained-artifacts.mjs.
+node "$REPO_ROOT/tests/helpers/retained-artifacts.mjs" "$REPO_ROOT/tests/.artifacts/workflow-router" >/dev/null || true
 SKILL_FILE="$REPO_ROOT/skills/using-horspowers/SKILL.md"
 ROUTER="$REPO_ROOT/skills/using-horspowers/scripts/route-request.mjs"
 RUN_ROOT="$REPO_ROOT/tests/.artifacts/workflow-router/$(date +%s)-$$-codex-fast-slow"

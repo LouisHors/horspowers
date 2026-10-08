@@ -4,6 +4,9 @@ set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
+
+# Keep retained fixtures bounded; see tests/helpers/retained-artifacts.mjs.
+node "$REPO_ROOT/tests/helpers/retained-artifacts.mjs" "$REPO_ROOT/tests/.artifacts/workflow-router" >/dev/null || true
 RUN_ROOT="$REPO_ROOT/tests/.artifacts/workflow-router/$(date +%s)-$$-claude-fast-slow"
 FAKE_HOME="$RUN_ROOT/home"
 PROJECT_ROOT="$RUN_ROOT/project"
