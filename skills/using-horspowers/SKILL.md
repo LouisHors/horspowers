@@ -61,3 +61,5 @@ Claude Code 与 Windows PowerShell 示例见 `references/host-path-resolution.md
 ## 宿主工具映射
 
 Codex 使用 native skill discovery、`update_plan` 和本机工具。Claude 专用工具名称的映射在 `references/codex-tools.md`；路径解析在 `references/host-path-resolution.md`。
+
+Pi 使用 `read`/`bash` 等本机工具与 `mcp__hps__*`（当 `hps serve --stdio` 已注册时）。向路由器传 `"host": "pi"`；Pi 无 SessionStart hook，会话级说明由项目/用户 `AGENTS.md` 提供，不由本 Skill 写入。

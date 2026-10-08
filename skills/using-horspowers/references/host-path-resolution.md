@@ -7,6 +7,9 @@
 | Claude Code | `${CLAUDE_PLUGIN_ROOT}/bin/hps` | `${CLAUDE_PLUGIN_ROOT}/skills/using-horspowers/scripts/route-request.mjs` |
 | Codex macOS/Linux | native discovery installation root + `/bin/hps` | native discovery installation root + `/skills/using-horspowers/scripts/route-request.mjs` |
 | Codex Windows PowerShell | native discovery installation root + `\\bin\\hps` | native discovery installation root + `\\skills\\using-horspowers\\scripts\\route-request.mjs` |
+| Pi | 发现到的 `skills/using-horspowers` 所属安装根（`~/.agents/skills/horspowers` 或 package 目录）+ `/bin/hps` | 同一安装根 + `/skills/using-horspowers/scripts/route-request.mjs` |
+
+Pi 在 system prompt 中给出每个 skill 的绝对路径，因此安装根由该路径向上解析（`<skill dir>/../..`），不扫描用户目录。pi 的 MCP 注册走 `pi mcp add hps -- <root>/bin/hps serve --stdio`（写入用户级 `~/.pi/agent/mcp.json`）或项目 `.pi/mcp.json`；native probe 使用临时的 `PI_CODING_AGENT_DIR`，不得改写用户级配置。
 
 Codex 的 symlink、junction 和复制安装都以 native discovery 目录为入口。HPS installation root 必须来自 native discovery，且执行前验证 `<root>/bin/hps` 是普通可执行文件；不得扫描或猜测用户目录。未知宿主若无法从 native metadata 解析路径，跳过脚本，回退 LLM 路由，且不做任何初始化写入。
 
@@ -30,4 +33,10 @@ printf '%s' "$HORSPOWERS_ROUTER_INPUT" | \
 # Codex Windows PowerShell（首选）
 $env:HORSPOWERS_ROUTER_INPUT |
   "$env:HPS_INSTALL_ROOT\bin\hps" call
+```
+
+```bash
+# Pi（首选；HPS_INSTALL_ROOT 来自 skill discovery 给出的 skill 路径）
+printf '%s' "$HORSPOWERS_ROUTER_INPUT" | \
+  "$HPS_INSTALL_ROOT/bin/hps" call
 ```

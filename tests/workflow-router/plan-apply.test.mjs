@@ -20,6 +20,26 @@ function input(message = '把这段文字翻译成英文') {
   };
 }
 
+test('pi is an accepted routing host while unknown hosts still fail closed', async () => {
+  const dependencies = {
+    loadRules: async () => rules,
+    planAgents: async () => ({ status: 'skipped', reason: 'not_applicable' }),
+    planProject: async () => ({ status: 'skipped', reason: 'not_applicable' }),
+    applyAgents: async () => ({ status: 'skipped' }),
+    applyProject: async () => ({ status: 'skipped' })
+  };
+  const accepted = await routeRequest({ ...input(), host: 'pi' }, dependencies);
+  assert.equal(accepted.routing.route, 'direct');
+  await assert.rejects(
+    () => routeRequest({ ...input(), host: 'opencode' }, dependencies),
+    /host must be/u
+  );
+  await assert.rejects(
+    () => routeRequest({ ...input(), host: 'unknown-host' }, dependencies),
+    /host must be/u
+  );
+});
+
 test('returns uncertain without mutations when rule loading fails before any plan', async () => {
   let planCalls = 0;
   let applyCalls = 0;

@@ -8,6 +8,7 @@ import {
   classifyHostResult,
   parseCodexProbeOutput,
   parseClaudeProbeOutput,
+  parsePiProbeOutput,
   parseMcpProbeOutput,
   parseCallOutput,
   parseVersionOutput,
@@ -18,7 +19,8 @@ const input = Object.freeze({
   installationRoot: '/native/horspowers',
   cwd: '/workspace/project',
   mcpConfigPath: '/private/tmp/hps-probe-123/claude.mcp.json',
-  debugFile: '/private/tmp/hps-probe-123/claude.debug.log'
+  debugFile: '/private/tmp/hps-probe-123/claude.debug.log',
+  agentDir: '/private/tmp/hps-probe-123'
 });
 
 test('Codex probe uses invocation-local MCP configuration and stdin prompt', () => {
@@ -58,6 +60,39 @@ test('native host probe rejects unsupported hosts and unsafe paths', () => {
   assert.throws(() => buildAgentInvocation('codex', { ...input, installationRoot: 'relative' }), /absolute/iu);
   assert.throws(() => buildAgentInvocation('claude', { ...input, cwd: '/tmp/../escape' }), /normalized/iu);
   assert.throws(() => buildAgentInvocation('claude', { ...input, mcpConfigPath: '/tmp/config\n.json' }), /control/iu);
+});
+
+test('Pi probe uses a temporary agent directory and keeps the prompt out of argv', () => {
+  const connection = buildConnectionInvocation('pi', input);
+  assert.equal(connection.command, 'pi');
+  assert.deepEqual(connection.args, ['mcp', 'list', '--json']);
+  assert.equal(connection.env.PI_CODING_AGENT_DIR, input.agentDir);
+
+  const agent = buildAgentInvocation('pi', input);
+  assert.equal(agent.command, 'pi');
+  assert.ok(agent.args.includes('--print'));
+  assert.ok(agent.args.includes('--mode'));
+  assert.equal(agent.stdin, HOST_PROBE_PROMPT);
+  assert.equal(agent.args.includes(HOST_PROBE_PROMPT), false);
+  assert.equal(agent.args.some((arg) => arg.includes(HOST_PROBE_PROMPT)), false);
+  assert.equal(agent.env.PI_CODING_AGENT_DIR, input.agentDir);
+});
+
+test('Pi probe output recognises a direct HPS MCP tool call as a pass', () => {
+  const stdout = [
+    JSON.stringify({ type: 'session', id: 'probe' }),
+    JSON.stringify({ type: 'agent_start' }),
+    JSON.stringify({ type: 'tool_execution_start', toolCallId: 'c1', toolName: 'mcp__hps__runtime_doctor', args: {} }),
+    JSON.stringify({ type: 'tool_execution_end', toolCallId: 'c1', toolName: 'mcp__hps__runtime_doctor', isError: false, result: '{}' }),
+    JSON.stringify({ type: 'message_end', message: { role: 'assistant', content: [{ type: 'text', text: '{"hps_connected": true, "visible_hps_tool_count": 19, "tool_call_status": "ok"}' }] } }),
+    JSON.stringify({ type: 'agent_settled', aborted: false })
+  ].join('\n');
+  const parsed = parsePiProbeOutput(stdout);
+  assert.equal(parsed.initialized, true);
+  assert.equal(parsed.connected, true);
+  assert.equal(parsed.toolCount, 19);
+  assert.equal(parsed.runtimeDoctorCalls, 1);
+  assert.equal(classifyHostResult({ exitCode: 0, timedOut: false, stderr: '' }, parsed), 'pass');
 });
 
 test('probe parsers report the real Claude connection and canonical 19 HPS tools', () => {
