@@ -9,7 +9,7 @@
 
 ## 📋 任务概述
 
-将 [自动化开发工作流设计文档.md](../自动化开发工作流设计文档.md) 转换为可执行的 Claude Skill，作为 `using-git-worktrees` 的替代方案。
+将 [自动化开发工作流设计文档.md](../archive/自动化开发工作流设计文档.md) 转换为可执行的 Claude Skill，作为 `using-git-worktrees` 的替代方案。
 
 ### 设计目标
 
