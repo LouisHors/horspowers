@@ -28,7 +28,7 @@ Pi differs from Codex and Claude Code in one important way: it has no plugin man
    Then pick one of two update strategies:
 
    ```bash
-   git checkout v4.8.1                       # pinned release (reproducible)
+   git checkout v4.8.2                       # pinned release (reproducible)
    # or
    git switch main && git pull --ff-only     # track the latest merged work
    ```
@@ -212,7 +212,7 @@ A local-path package has no separate install step, so whichever revision the che
 
 ### `hps` is missing from `pi mcp list`
 
-- Confirm `<installation root>/bin/hps` exists and is executable; the release must be v4.8.1 or later.
+- Confirm `<installation root>/bin/hps` exists and is executable; Pi support landed in v4.8.0.
 - Confirm `pi mcp list` shows the server and read the reported stderr tail. Check `~/.pi/agent/mcp.log`.
 - Confirm the server is registered in Pi's own `<agent-dir>/mcp.json`. A server that only lives in the shared `~/.config/mcp/mcp.json` is read by the adapter but not by `pi mcp list`.
 - A project-local `.pi/mcp.json` is only read after project trust is granted.
