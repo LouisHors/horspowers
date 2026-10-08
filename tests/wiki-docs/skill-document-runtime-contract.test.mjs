@@ -65,13 +65,37 @@ const establishedNodeFsMutationInventories = new Map([
   ])]
 ]);
 
+// The HPS host-registration generator is an explicit configuration writer,
+// not a document writer. Keep its tiny mutation surface reviewed separately
+// so the repository audit cannot silently turn it into a general write escape
+// hatch.
+const hpsRegistrationMutationInventory = new Map([
+  ['scripts/install-hps-mcp.mjs', new Set([
+    'node-fs-mutation:mkdir',
+    'node-fs-mutation:writeFile'
+  ])]
+]);
+
+// Native host probing writes only bounded, collision-resistant diagnostics to
+// an OS temporary directory. It never targets project documentation or user
+// configuration, so keep this diagnostic surface explicitly reviewed.
+const hpsProbeMutationInventory = new Map([
+  ['lib/hps-native-host-probe.mjs', new Set([
+    'node-fs-mutation:mkdtemp',
+    'node-fs-mutation:writeFile'
+  ])]
+]);
+
 const runtimeTextExtensions = new Set([
   '.bash', '.c', '.cc', '.cjs', '.cmd', '.coffee', '.cpp', '.cs', '.fish',
   '.go', '.h', '.java', '.js', '.json', '.jsx', '.lua', '.mjs', '.php',
   '.pl', '.ps1', '.py', '.rb', '.rs', '.sh', '.swift', '.toml', '.ts',
   '.tsx', '.yaml', '.yml', '.zsh'
 ]);
-const ignoredAuditDirectories = new Set(['.git', '.worktrees', 'coverage', 'node_modules']);
+// Retained test fixtures under `.artifacts` are written and removed by other
+// test files in parallel; traversing them makes this audit fail at random and
+// grow with every run. `.horspowers` state is likewise runtime-only.
+const ignoredAuditDirectories = new Set(['.git', '.worktrees', 'coverage', 'node_modules', '.artifacts', '.horspowers']);
 const nodeFsMutationMethods = new Set([
   'appendFile', 'chmod', 'chown', 'copyFile', 'cp', 'createWriteStream',
   'fchmod', 'fchown', 'ftruncate', 'link', 'lchmod', 'lchown', 'lutimes',
@@ -823,7 +847,8 @@ test('brainstorming resolves the runtime before collecting company Wiki context'
   const collector = await readRelative('skills/brainstorming/scripts/collect-context.mjs');
   const runtimeReference = await readRelative('skills/using-horspowers/references/document-runtime.md');
 
-  assert.match(skill, /调用 `resolve`[\s\S]*collect-context\.mjs/u);
+  assert.match(skill, /task_prepare[\s\S]*collect-context\.mjs/u);
+  assert.match(skill, /不要在同一请求中同时执行 HPS 与旧 collector/u);
   assert.match(skill, /内部调用统一运行时的 `resolve`[\s\S]*identity_status\s*===\s*["']external["']/u);
   assert.match(skill, /ambiguous_company_remote[\s\S]*调用方不能用输入字段/u);
   assert.match(runtimeReference, /内部调用统一运行时的 `resolve`[\s\S]*identity_status\s*===\s*["']external["']/u);
@@ -849,6 +874,16 @@ test('repository audit permits direct global qmd search only in the runtime-enfo
   assert.deepEqual(matches, ['skills/brainstorming/scripts/collect-context.mjs']);
   const collector = await readRelative('skills/brainstorming/scripts/collect-context.mjs');
   assert.match(collector, /if \(runtimeResult\?\.identity_status !== 'external'\) \{[\s\S]*?DOCUMENT_RUNTIME_REQUIRED/u);
+});
+
+test('repository audit never traverses retained in-repo test artifacts', async () => {
+  // The audit walks the whole repository. Fixtures under tests/.artifacts are
+  // created and removed by other test files running in parallel, so traversing
+  // them makes this audit fail at random (readdir on a removed directory) and
+  // grow without bound between runs. The audit must enumerate source only.
+  const allFiles = await walk(repoRoot);
+  const retained = allFiles.map(relative).filter((rel) => rel.startsWith('tests/.artifacts/'));
+  assert.deepEqual(retained, []);
 });
 
 test('runtime reference documents JSON stdin contract, safe documents, and the runtime status catalog', async () => {
@@ -923,6 +958,18 @@ test('repository audit rejects direct document operations outside the exact allo
     const establishedInventory = establishedNodeFsMutationInventories.get(rel);
     if (establishedInventory) {
       assert.deepEqual(new Set(operationIds), establishedInventory, `${rel} must not gain an unreviewed Node fs mutation`);
+      continue;
+    }
+
+    const hpsRegistrationInventory = hpsRegistrationMutationInventory.get(rel);
+    if (hpsRegistrationInventory) {
+      assert.deepEqual(new Set(operationIds), hpsRegistrationInventory, `${rel} must retain its bounded registration writes`);
+      continue;
+    }
+
+    const hpsProbeInventory = hpsProbeMutationInventory.get(rel);
+    if (hpsProbeInventory) {
+      assert.deepEqual(new Set(operationIds), hpsProbeInventory, `${rel} must retain its bounded probe artifact writes`);
       continue;
     }
 

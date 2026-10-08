@@ -5,6 +5,7 @@ set -euo pipefail
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
+PORTABLE_TIMEOUT="$REPO_ROOT/scripts/portable-timeout.sh"
 tmp_root=""
 
 # shellcheck source=tests/codex/skill-dir-helper.sh
@@ -38,7 +39,7 @@ trap cleanup EXIT
 
 prompt="先用一个 failing case 把问题固定住，后面实现可以再慢慢补。"
 
-if ! AGENTS_SKILLS_DIR="$skills_dir" timeout 180s "$CODEX_BIN" exec \
+if ! AGENTS_SKILLS_DIR="$skills_dir" "$PORTABLE_TIMEOUT" 180s -- "$CODEX_BIN" exec \
   --output-last-message "$last_message_file" "$prompt" >"$output_file" 2>&1; then
   echo "  [FAIL] codex exec did not complete TDD trigger probe"
   sed -n '1,120p' "$output_file"

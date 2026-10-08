@@ -1,5 +1,6 @@
 #!/usr/bin/env node
-import { InputContractError, routeRequest } from '../../../lib/workflow-router.mjs';
+import { InputContractError } from '../../../lib/workflow-router.mjs';
+import { routeRequestWithHps } from '../../../lib/hps-legacy-route-bridge.mjs';
 
 if (process.argv.length !== 2) {
   console.error('route-request.mjs accepts JSON on stdin only');
@@ -16,7 +17,7 @@ try {
   } catch {
     throw new InputContractError('route-request.mjs received malformed JSON on stdin');
   }
-  const result = await routeRequest(input);
+  const result = await routeRequestWithHps(input);
   process.stdout.write(`${JSON.stringify(result)}\n`);
 } catch (error) {
   console.error(error instanceof Error ? error.message : String(error));

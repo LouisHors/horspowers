@@ -6,6 +6,20 @@
 
 ## 🇨🇳 中文介绍
 
+### Agent-first HPS 执行面
+
+核心能力可通过 `hps` CLI 复用。Agent 优先使用 `hps serve --stdio` MCP Sidecar；旧宿主、CI 或无 MCP 环境使用 `hps call`。品牌与插件命名仍保留 `horspowers`，仅可执行文件名精简为 `hps`。安装器未把它加入 PATH 时，Agent 应从宿主 native discovery 得到安装根并执行 `<installation-root>/bin/hps`，不能扫描或猜测用户目录。
+
+宿主注册必须使用 native skill discovery 得到的安装根。仓库提供仅输出或写入显式目标文件的生成器，不会扫描用户目录或修改全局配置：
+
+```bash
+node <installation-root>/scripts/install-hps-mcp.mjs \
+  --host claude --installation-root <installation-root> \
+  --output .mcp.hps.json
+```
+
+Claude `.mcp.json` 示例在 `templates/mcp/claude.mcp.json`，Codex/OpenCode 示例分别在 `templates/mcp/codex.json` 与 `templates/mcp/opencode.json`；三者都执行 `<installation-root>/bin/hps serve --stdio`。
+
 **HorsPowers** 是基于 [Superpowers](https://github.com/obra/superpowers) 的自定义版本，专为个人开发者优化。
 
 原版 Superpowers 是一个很厉害的想法，所以我没有改动太多的流程，唯一的问题是，没有支持中文

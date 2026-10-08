@@ -4,6 +4,8 @@
 
 set -euo pipefail
 
+PORTABLE_TIMEOUT="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)/scripts/portable-timeout.sh"
+
 # Create a temporary test project
 create_test_project() {
     local test_name="${1:-integration-test-$(date +%s)}"
@@ -54,7 +56,7 @@ run_claude_in_project() {
 
     (
         cd "$project_dir"
-        claude -p "$prompt" --permission-mode bypassPermissions > "$output_file" 2>&1
+        "$PORTABLE_TIMEOUT" "${timeout}s" -- claude -p "$prompt" --permission-mode bypassPermissions > "$output_file" 2>&1
     )
 
     local exit_code=$?

@@ -4,6 +4,7 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PORTABLE_TIMEOUT="$SCRIPT_DIR/../../scripts/portable-timeout.sh"
 source "$SCRIPT_DIR/test-helpers.sh"
 
 echo "========================================"
@@ -170,7 +171,7 @@ echo "Running Claude (output will be shown below and saved to $OUTPUT_FILE)..."
 echo "================================================================================"
 if ! (
     cd "$SCRIPT_DIR/../.." &&
-    timeout 1800 claude -p "$PROMPT" --allowed-tools=all --add-dir "$TEST_PROJECT" --permission-mode bypassPermissions 2>&1 | tee "$OUTPUT_FILE"
+    "$PORTABLE_TIMEOUT" 1800s -- claude -p "$PROMPT" --allowed-tools=all --add-dir "$TEST_PROJECT" --permission-mode bypassPermissions 2>&1 | tee "$OUTPUT_FILE"
 ); then
     exit_code=$?
     echo ""

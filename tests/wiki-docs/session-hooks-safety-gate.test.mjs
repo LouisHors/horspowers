@@ -185,5 +185,6 @@ test('SessionStart retains local configuration behavior for an ordinary remote',
   assert.equal(result.stderr, '');
   const context = JSON.parse(result.stdout).hookSpecificOutput.additionalContext;
   assert.match(context, /<config-valid>true<\/config-valid>/);
+  assert.match(context, /<hps-runtime status="ready">/u);
   assert.doesNotMatch(context, /external-document-runtime-not-ready/);
 });

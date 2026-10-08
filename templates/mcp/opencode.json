@@ -1,0 +1,9 @@
+{
+  "mcp": {
+    "hps": {
+      "type": "local",
+      "command": ["__HPS_INSTALL_ROOT__/bin/hps", "serve", "--stdio"],
+      "enabled": true
+    }
+  }
+}

@@ -6,6 +6,7 @@ SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 REPO_ROOT="$(cd "$SCRIPT_DIR/../.." && pwd)"
 CODEX_BIN="${CODEX_BIN:-codex}"
 TIMEOUT_BIN="${TIMEOUT_BIN:-timeout}"
+PORTABLE_TIMEOUT="$REPO_ROOT/scripts/portable-timeout.sh"
 AGENTS_SKILLS_DIR="${AGENTS_SKILLS_DIR:-$HOME/.agents/skills}"
 
 # shellcheck source=tests/codex/skill-dir-helper.sh
@@ -18,11 +19,6 @@ if ! command -v "$CODEX_BIN" >/dev/null 2>&1; then
   exit 0
 fi
 
-if ! command -v "$TIMEOUT_BIN" >/dev/null 2>&1; then
-  echo "  [SKIP] timeout command not found at: $TIMEOUT_BIN"
-  exit 0
-fi
-
 ensure_horspowers_skill_dir "$REPO_ROOT" "$AGENTS_SKILLS_DIR"
 
 output_file="$(mktemp)"
@@ -31,7 +27,7 @@ cleanup() {
 }
 trap cleanup EXIT
 
-if ! "$TIMEOUT_BIN" 180s "$CODEX_BIN" exec "According to the horspowers brainstorming skill and its spec reviewer prompt in this session, a design can be referenced by a local runtime path or a Wiki logical ID/URI. Before the user review gate, what review must occur, must the reviewer receive the complete design body, and what happens after blocking issues are fixed? Answer briefly." >"$output_file" 2>&1; then
+if ! "$PORTABLE_TIMEOUT" 180s -- "$CODEX_BIN" exec "According to the horspowers brainstorming skill and its spec reviewer prompt in this session, a design can be referenced by a local runtime path or a Wiki logical ID/URI. Before the user review gate, what review must occur, must the reviewer receive the complete design body, and what happens after blocking issues are fixed? Answer briefly." >"$output_file" 2>&1; then
   echo "  [FAIL] codex exec did not complete brainstorming review probe"
   sed -n '1,120p' "$output_file"
   exit 1
@@ -62,7 +58,7 @@ else
   exit 1
 fi
 
-if ! "$TIMEOUT_BIN" 180s "$CODEX_BIN" exec "According to the horspowers writing-plans skill and its plan reviewer prompt in this session, a plan and design can each be referenced by a local runtime path or a Wiki logical ID/URI. Before execution handoff, what review must happen, must the reviewer receive both complete bodies, and what happens after blocking issues are fixed? Answer briefly." >"$output_file" 2>&1; then
+if ! "$PORTABLE_TIMEOUT" 180s -- "$CODEX_BIN" exec "According to the horspowers writing-plans skill and its plan reviewer prompt in this session, a plan and design can each be referenced by a local runtime path or a Wiki logical ID/URI. Before execution handoff, what review must happen, must the reviewer receive both complete bodies, and what happens after blocking issues are fixed? Answer briefly." >"$output_file" 2>&1; then
   echo "  [FAIL] codex exec did not complete writing-plans review probe"
   sed -n '1,120p' "$output_file"
   exit 1

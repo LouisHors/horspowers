@@ -1,5 +1,33 @@
 # Horspowers Release Notes
 
+## v4.7.1 (2026-10-08)
+
+### New Features
+
+**HPS agent-first core CLI 与 MCP sidecar**
+- `bin/hps` 提供 `hps call`（stdin-only 结构化调用）、`hps version --json`、`hps doctor --json` 与 `hps serve --stdio`（MCP sidecar）四个入口。
+- 19 个公开 operation 共用单一 registry；CLI 与 MCP 的 canonical envelope（success / error / result / metrics）等价。
+- 子进程固定 program/args 且 `shell:false`，env 显式 allowlist；宿主 capability 无法验证时一律 fail closed，Sidecar 不作为沙盒绕过通道。
+- Scope / snapshot / document cache、persistent qmd read session、session / checkpoint 控制态递归安全、commit / merge preview 与 19 个 MCP 工具的强类型 schema 已实现。
+- Skill 的确定性边界迁移到 HPS/Core：route、document 只读、context 与 session 走 `hps call`；document 写操作保留受控兼容入口；legacy route/hooks 保持旧 envelope 等价。
+- 提供 Codex / Claude Code capability adapter、MCP 注册模板与 project-local 注册生成，以及替换 GNU `timeout` 的仓库内 portable helper。
+- 设计、实施与收口计划见 `docs/plans/2026-08-13-design-hps-agent-first-core-cli-与-mcp-sidecar.md`、`docs/plans/2026-08-13-hps-phase2-skill-execution-plane.md` 与 `docs/plans/2026-08-14-hps-phase-1-2-gap-closure-plan.md`。
+
+### Bug Fixes
+
+**回归套件不确定性（含真实 runtime bug）**
+- `scopeToken()` 原先使用 `randomBytes(18).toString('base64url')`，有 3.125% 概率生成首字符为 `-` 或 `_` 的 id，而控制态校验器要求首字符为字母数字；另有 `-var-` 词边界片段与 `sk-`/`gh?_` 凭据前缀误判类别。结果是由 runtime 自己生成、随后被自己拒绝的 opaque id 随机失败（实测 200000 次 `openScope`+`sessionPrepare` 拒绝 6233 次）。现改为 `randomBytes(12).toString('hex')`，实测 1,000,000 次 0 拒绝。
+- `tests/wiki-docs` 的仓库审计会遍历仓库内 `tests/.artifacts/`（实测 42012 个目录 / 266MB，且随运行次数无界增长），并与并行测试的 `rm -rf` 竞态，导致约 30% 概率随机失败且失败项不固定。审计忽略列表新增 `.artifacts` 与 `.horspowers`。
+- 合并回归（collector + wiki-docs + workflow-router + hps）：连续 5 次 464/464 通过，0 failed、0 skipped；`tests/hps/*` 单独 177/177。
+
+### Compatibility and Rollback
+
+- Codex / Claude Code 的 native probe direct 通道（`hps version`、`hps call`、`hps serve --stdio` 的 19 工具 MCP 握手）通过；两宿主的真实 agent 步在本机为宿主侧 timeout / failed，已明确移出本版验收门，不记为通过。
+- Pi agent 适配列为下一阶段，本版不包含。
+- 未删除文件，未修改全局 MCP 配置。回滚可直接撤销本版提交。
+
+---
+
 ## v4.7.0 (2026-08-13)
 
 ### New Features
