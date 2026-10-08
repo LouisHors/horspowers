@@ -7,7 +7,7 @@ Use this template when reviewing a Horspowers implementation plan resolved throu
 **Use after:** the plan and its design/spec were reloaded in full. Each reference may be a local runtime path or a Wiki logical ID/URI, but the reviewer must receive both complete bodies.
 
 ```text
-Task tool (general-purpose):
+子代理工具（Claude `Task` / Codex `spawn_agent` / Pi `subagent`；general-purpose）：
   description: "Review complete plan against complete design"
   prompt: |
     You are a plan document reviewer for the Horspowers document runtime.

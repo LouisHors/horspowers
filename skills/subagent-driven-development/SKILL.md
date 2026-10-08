@@ -9,6 +9,8 @@ description: You MUST use this when the user wants an existing implementation pl
 
 ## 加载计划与设计
 
+开始前先确认隔离环境：若当前不在隔离工作区且本次改动需要隔离，先调用 `horspowers:using-git-worktrees`（它先检测已有隔离，不会重复创建）。
+
 先阅读 `horspowers:using-horspowers/references/document-runtime.md`。先 `resolve`，ready 后用 `search` 找当前 plan、design、task 和相关 bug，再用 `get` 读取完整正文。不要用文件系统路径、配置标记或 shell 检查推断文档 backend。
 
 控制器在 **once before any task execution begins** 的前置步骤中读取一次完整计划，提取所有任务并在后续循环复用；不要让每个子代理重复读取文件。为每个 implementer 和 reviewer 直接提供完整任务文本、关联 design/plan 的完整约束、验收命令以及前序结论。逻辑 ID 只是引用，不能代替正文。若运行时 unavailable，保留本会话上下文并报告未持久化；继续前须确保用户已经提供足够的计划内容。
